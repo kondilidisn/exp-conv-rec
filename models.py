@@ -38,12 +38,17 @@ class TransformerEncoder(nn.Module):
             if args.input_length_limit > 512:
                 # instantiate new extended positional embedding parameters
                 new_positional_embeddings = nn.Embedding(num_embeddings=args.input_length_limit, embedding_dim=768)
-                # copy pretrained parameters of exsisting positions (<=512)
+                # copy pretrained parameters of existing positions (<=512)
                 new_positional_embeddings.weight[:512, :] = self.encoder.embeddings.position_embeddings.weight
                 # replace paramters in model
-                self.encoder.embeddings.position_embeddings = new_positional_embeddings
+                self.encoder.embeddings.position_embeddings.weight = nn.Parameter(new_positional_embeddings.weight)
 
-            # xtend vocab size of the model accordingly as well
+                self.encoder.embeddings.position_embeddings.num_embeddings = args.input_length_limit
+
+                # update parameter's value on BERT's config
+                self.encoder.config.max_position_embeddings = args.input_length_limit
+
+            # extend vocab size of the model accordingly as well
             self.encoder._resize_token_embeddings(new_num_tokens = vocab_size)
         else:
             # print("vocab_size :", vocab_size)
@@ -494,6 +499,7 @@ class TransformerEncoder(nn.Module):
             if batch == None:
                 continue
 
+            print("batch context size:", batch["contexts"].size())
 
             batch_outputs, batch_losses = self.forward_batch(batch)
 

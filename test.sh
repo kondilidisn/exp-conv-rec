@@ -2,8 +2,8 @@
 # Set job requirements
 #SBATCH --job-name=Thesis
 #SBATCH --ntasks=1
-#SBATCH --time=24:00:00
-#SBATCH --partition=gpu_shared
+#SBATCH --time=00:05:00
+#SBATCH --partition=gpu_short
 
 #SBATCH --mail-type=BEGIN,END
 #SBATCH --mail-user=kondilidisn9@gmail.com
