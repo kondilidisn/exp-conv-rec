@@ -120,8 +120,10 @@ def main():
     args.use_cuda = True if args.use_cuda == "True" else False
     args.debug_run = True if args.debug_run == "True" else False
 
-    # make sure that Experiments directory already exists (args.exp_dir)
 
+    print("Make sure position of Movie_Mentioned tokens, corresponds to final output index ALWAYS!")
+
+    # make sure that Experiments directory already exists (args.exp_dir)
     os.makedirs(args.exp_dir, exist_ok=True)
 
     checkpoint_handler, Model_Class, output_dir = init(args)
