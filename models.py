@@ -491,7 +491,7 @@ class TransformerEncoder(nn.Module):
         # for step in range(n_batches):
         for step in tqdm(range(n_batches)):
 
-            self.zero_grad()
+            self.optimizer.zero_grad()
 
             # we retrieve a batch
             batch = batch_loader.load_batch(subset = "train")
@@ -499,46 +499,7 @@ class TransformerEncoder(nn.Module):
             if batch == None:
                 continue
 
-            print("batch context size:", batch["contexts"].size())
-
             batch_outputs, batch_losses = self.forward_batch(batch)
-
-
-            # minibatches = self.split_batch_to_minibatches(batch)
-
-            # # we average losses over the whole batch 
-            # # torch.zeros(1, dtype=None, layout=torch.strided, device=None, requires_grad=False)
-            # batch_losses = None
-
-            # for minibatch in minibatches:
-
-            #     torch.cuda.empty_cache()
-
-            #     if next(self.parameters()).is_cuda and self.args.n_gpu > 1:
-            #         minibatch = self.make_batch_multiple_of_GPUs_for_DataParallel(minibatch)
-                        
-            #     torch.cuda.empty_cache()
-
-            #     # do the forward pass
-            #     outputs, losses = self(minibatch)
-
-
-            #     torch.cuda.empty_cache()
-
-            #     # we preprocess the losses
-            #     if self.args.n_gpu > 1:
-            #         losses = [loss.mean() for loss in losses]
-
-            #     # add the losses of the batch
-            #     if batch_losses is None:
-            #         batch_losses = losses
-            #     else:
-            #         for i, loss in enumerate(losses):
-            #             batch_losses[i] += loss
-
-            # # get average losses over minibatches
-            # for i, loss in enumerate(batch_losses):
-            #     batch_losses[i] = batch_losses[i] / len(minibatches)
 
             # we store all losses
             for i, loss in enumerate(batch_losses):
@@ -548,33 +509,18 @@ class TransformerEncoder(nn.Module):
             if len(batch_losses) != 1:
                 batch_losses = self.normalize_losses(batch_losses)
 
-            batch_losses = self.interpolate_losses(batch_losses)
+            batch_loss = self.interpolate_losses(batch_losses)
 
-            interpolated_losses.append(batch_losses.item())
+            interpolated_losses.append(batch_loss.item())
 
-            # depending on the task, some minibatches do not have any targets
-            # if batch_losses.item() == 0:
-            #     continue
+            batch_loss.backward()
 
-            # print(batch_losses)
-
-
-            torch.cuda.empty_cache()
-            # perform backward step
-            batch_losses.backward()
-
-            torch.cuda.empty_cache()
             # perform update step
             torch.nn.utils.clip_grad_norm_(self.parameters(), self.args.max_grad_norm)
             
             self.optimizer.step()
 
             torch.cuda.empty_cache()
-
-            # self.scheduler.step()  # Update learning rate schedule
-
-            torch.cuda.empty_cache()
-
 
         # we remove the total_losses that are not being used
         while len(total_losses[-1]) == 0:
