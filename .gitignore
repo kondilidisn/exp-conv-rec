@@ -2,3 +2,4 @@ experiments/*
 *.csv
 *.pyc
 config.py
+slurm-*.out

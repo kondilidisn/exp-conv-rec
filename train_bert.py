@@ -108,7 +108,7 @@ def main():
     parser.add_argument("--use_pretrained", default="False", type=str)
 
 
-    parser.add_argument("--debug_run", default="True", type=str)
+    parser.add_argument("--debug_run", default="False", type=str)
 
 
     args = parser.parse_args()
