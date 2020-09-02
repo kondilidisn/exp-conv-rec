@@ -34,10 +34,17 @@ class TransformerEncoder(nn.Module):
 
             self.encoder = transformers.BertModel.from_pretrained('bert-base-uncased')
 
-            # print(self.encoder.embeddings.word_embeddings)
+            # if requested, we have to extend the parameters of the positional embeddings, so that the input length limit can be increased.
+            if args.input_length_limit > 512:
+                # instantiate new extended positional embedding parameters
+                new_positional_embeddings = nn.Embedding(num_embeddings=args.input_length_limit, embedding_dim=768)
+                # copy pretrained parameters of exsisting positions (<=512)
+                new_positional_embeddings.weight[:512, :] = self.encoder.embeddings.position_embeddings.weight
+                # replace paramters in model
+                self.encoder.embeddings.position_embeddings = new_positional_embeddings
+
+            # xtend vocab size of the model accordingly as well
             self.encoder._resize_token_embeddings(new_num_tokens = vocab_size)
-            # print(self.encoder.embeddings.word_embeddings)
-            # exit()
         else:
             # print("vocab_size :", vocab_size)
             # print("input_length_limit :", args.input_length_limit)

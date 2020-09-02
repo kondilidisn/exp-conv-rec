@@ -8,7 +8,7 @@ AUTOREC_MODEL = os.path.join(MODELS_PATH, "autorec")
 SENTIMENT_ANALYSIS_MODEL = os.path.join(MODELS_PATH, 'sentiment_analysis')
 RECOMMENDER_MODEL = os.path.join(MODELS_PATH, "recommender")
 # data set path
-REDIAL_DATA_PATH = '/../../Datasets/ReDial'
+REDIAL_DATA_PATH = '../../Datasets/ReDial'
 TRAIN_PATH = "train_data"
 VALID_PATH = "valid_data"
 TEST_PATH = "test_data"
@@ -29,7 +29,7 @@ CONVERSATION_LENGTH_LIMIT = 40  # conversations are truncated after 40 utterance
 UTTERANCE_LENGTH_LIMIT = 80  # utterances are truncated after 80 words
 
 # Movielens ratings path
-ML_DATA_PATH =  "/../../Datasets/movielens"
+ML_DATA_PATH =  "../../Datasets/movielens"
 ML_SPLIT_PATHS = [os.path.join(ML_DATA_PATH, "split0"),
                   os.path.join(ML_DATA_PATH, "split1"),
                   os.path.join(ML_DATA_PATH, "split2"),
