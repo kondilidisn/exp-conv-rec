@@ -78,7 +78,7 @@ def main():
 
 
     # model parameters
-    parser.add_argument("--input_length_limit", default=1024, type=int)
+    parser.add_argument("--input_length_limit", default=512, type=int)
     parser.add_argument("--hidden_size", default=64, type=int)
     parser.add_argument("--num_hidden_layers", default=2, type=int)
     parser.add_argument("--num_attention_heads", default=4, type=int)
@@ -117,7 +117,7 @@ def main():
     args.use_pretrained = True if args.use_pretrained == "True" else False
     # args.use_CLS_output = True if args.use_CLS_output == "True" else False
     # args.CLS_mode = True if args.CLS_mode == "True" else False
-    args.use_cuda = True if args.use_cuda == "True" else False
+    args.use_cuda = True if args.use_cuda == "True" and torch.cuda.is_available() else False
     args.debug_run = True if args.debug_run == "True" else False
 
 
@@ -136,14 +136,21 @@ def main():
 
     if args.debug_run:
         args.output_dir = "debug_run"
-        args.conversations_per_batch = 10
+        args.conversations_per_batch = 2
         args.max_samples_per_gpu = 1
-        args.num_train_epochs = 5
+        args.num_train_epochs = 2
         # torch.set_num_threads(4)
         # OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 python3 train.py --HIBERT False --debug_run True --use_cuda False
         # CUDA_LAUNCH_BLOCKING=1 
 
         # args.use_cuda = False
+
+
+    final_exp_dir = os.path.join(args.exp_dir , args.output_dir)
+    if os.path.exists(final_exp_dir) and not args.debug_run:
+        print("Experiment already exists, with experiment name:\n" + final_exp_dir + "\nSkipping Experiment!")
+        exit()
+
 
 
     args.output_dir = "Developing..." + args.output_dir
@@ -224,7 +231,6 @@ def main():
     # evaluate model
     eval_losses = model.evaluate_model(batch_loader = batch_loader, subset = "valid")
 
-
     if args.task != "semantic":
         perplexity, blue_score = model.evaluate_nlg(batch_loader = batch_loader, subset = "valid")
     else:
@@ -246,10 +252,14 @@ def main():
 
     for epoch in range(args.num_train_epochs):
 
-        # train model
-        train_losses = model.train_epoch(batch_loader = batch_loader)
-        # evaluate model
-        eval_losses = model.evaluate_model(batch_loader = batch_loader, subset = "valid")
+        # training
+        with torch.enable_grad():
+            model.train()
+            train_losses = model.train_epoch(batch_loader = batch_loader)
+
+        # evaluation
+        with torch.no_grad():
+            eval_losses = model.evaluate_model(batch_loader = batch_loader, subset = "valid")
 
         if args.task != "semantic":
             perplexity, blue_score = model.evaluate_nlg(batch_loader = batch_loader, subset = "valid")
@@ -273,6 +283,7 @@ def main():
                 break
                             
 
+        
 
 
     # evaluate on test set
@@ -331,7 +342,8 @@ def main():
 
 
     # if the final output directory already exists, then we delete it
-    final_output_dir = args.output_dir[ len("Developing...") : ]
+    final_output_dir = os.path.join(args.exp_dir,  args.output_dir[ len(args.exp_dir + "/Developing...") : ] )
+
 
     if os.path.isdir(final_output_dir):
         shutil.rmtree(final_output_dir)
@@ -437,9 +449,11 @@ def update_ckeckpoint_handler(checkpoint_handler, task, train_losses, eval_losse
         norm_eval_cat_loss = eval_losses[0][0]
         norm_eval_sa_loss = eval_losses[0][1]
 
-        train_cat_loss = math.sqrt(train_losses[1][0])
+        # train_cat_loss = math.sqrt(train_losses[1][0])
+        train_cat_loss = train_losses[1][0]
         train_sa_loss = train_losses[1][1]
-        eval_cat_loss = math.sqrt(eval_losses[1][0])
+        # eval_cat_loss = math.sqrt(eval_losses[1][0])
+        eval_cat_loss = eval_losses[1][0]
         eval_sa_loss = eval_losses[1][1]
 
         train_interpol_loss = train_losses[2]

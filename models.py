@@ -74,10 +74,10 @@ class TransformerEncoder(nn.Module):
 
 
         # set up loss functions
-        self.mse_loss = torch.nn.MSELoss(reduction='none')
+        self.mse_loss = torch.nn.MSELoss(reduction='mean')
         # using same weights with ReDial SA model [1. / 5, 1. / 80, 1. / 15] (Based on label frequency distribution (4.9%, 81%, 14%))
-        self.SA_crossE_Loss = torch.nn.CrossEntropyLoss(weight = torch.Tensor([1. / 5, 1. / 80, 1. / 15]), ignore_index=-1, reduction="none")
-        self.CrossE_Loss = torch.nn.CrossEntropyLoss(ignore_index=-1, reduction="none")
+        self.SA_crossE_Loss = torch.nn.CrossEntropyLoss(weight = torch.Tensor([1. / 5, 1. / 80, 1. / 15]), ignore_index=-1, reduction="mean")
+        self.CrossE_Loss = torch.nn.CrossEntropyLoss(ignore_index=-1, reduction="mean")
 
         self.optimizer = torch.optim.Adam(self.parameters(), lr=args.learning_rate, betas=(0.9, 0.999), eps=args.adam_epsilon, weight_decay=0, amsgrad=False)
 
@@ -110,7 +110,8 @@ class TransformerEncoder(nn.Module):
         movie_rating_vector = torch.zeros(sa_pred.size(0), self.n_movies)
 
         # used the liked probability, so that it is directly comperable with the ReDial baseline
-        liked_pred = sa_pred[:,:,1]
+        # liked_pred = sa_pred[:,:,1]
+        liked_pred = sa_pred
         # otherwise, you can apply softmax only on the first two dimensions, redistributing the probability of "did not say", to the other two cases (liked/disliked)
 
         if next(self.parameters()).is_cuda:
@@ -361,57 +362,79 @@ class TransformerEncoder(nn.Module):
 
 
     # forward function, splits batch to minibaches, concatentes final outputs, and normalizes losses over batch, w.r.t. number of targets per task
-    def forward_batch(self, batch):
+    def forward_batch(self, batch, train = False):
         # will be used for appropriatly averaging the losses, from the minibatches, depending on the number of sampels per minibatch
 
-        batch_losses = [[], [], []]
-        batch_target_counter = [0, 0, 0]
+        batch_normalized_losses = [0, 0, 0]
+        batch_losses = [0, 0, 0]
         batch_outputs = [[], [], []]
+        batch_interpolated_loss = 0
+
+
+        batch_SA_targets = (batch["sentiment_analysis_targets"] != -1).sum()
+
+        batch_size = batch["contexts"].size(0)
 
         minibatches = self.split_batch_to_minibatches(batch)
 
         for minibatch in minibatches:
-            
-            torch.cuda.empty_cache()
+
+            minibatch_size = minibatch["contexts"].size(0)
+
+            minibatch_SA_targets = (minibatch["sentiment_analysis_targets"] != -1).sum()
+
+            minibatch_to_batch_ratio = minibatch_size / batch_size
 
             if next(self.parameters()).is_cuda and self.args.n_gpu > 1:
                 minibatch = self.make_batch_multiple_of_GPUs_for_DataParallel(minibatch)
 
-            outputs, losses = self(minibatch)
+            outputs, losses = self.forward(minibatch)
+
+            # normalize Category loses so that the represent tha minibatch w.r.t. the complete batch
+            losses[0] *= minibatch_to_batch_ratio
+
+            # normalize SA loss of minibatch by the number of SA targets on the minibatch (w.r.t. batch SA targets)
+            losses[1] *= minibatch_SA_targets.float() / batch_SA_targets.float()
+
+            # record the unnormalized losses
+            for i in range(len(losses)):
+                batch_losses[i] += losses[i].item()*minibatch_to_batch_ratio
+
+            # if the task at hand has more than one loss (involves two or more tasks), then we normalize the losses
+            if len(losses) != 1 and train:
+                losses = self.normalize_losses(losses)
+
+            loss = self.interpolate_losses(losses)
+
+            loss *= minibatch_to_batch_ratio
+
+            batch_interpolated_loss += loss.item()
 
             for i in range(len(losses)):
                 # append the losses of the batch
-                batch_losses[i].append(losses[i])
-                # increment batch target counter
-                batch_target_counter[i] += losses[i].numel()
+                batch_normalized_losses[i] += losses[i].item()
                 # register outputs
                 batch_outputs[i].append(outputs[i])
 
+            # some minibatches might not have any targets (SA mainly)
+            if loss != 0 and train:
+                loss.backward()
+
+        if train:
+            self.optimizer.step()
 
         # we remove the lists that are not being used
-        while len(batch_losses[-1]) == 0:
-            del batch_losses[-1]
+        while len(batch_normalized_losses) != len(losses):
+            del batch_normalized_losses[-1]
             del batch_outputs[-1]
-
-        # allocate space in tensor form to sum the losses, per task
-        losses = torch.Tensor( [0] * len(batch_losses))
-
-        if next(self.parameters()).is_cuda:
-            losses = losses.cuda()
-
-        # we average appropriately the losses
-        for i in range(len(batch_losses)):
-            for j in range(len(batch_losses[i])):
-                # sum losses over minibatches
-                losses[i] += batch_losses[i][j].sum()
-            # average every loss with the number of targets per task
-            losses[i] = losses[i] / batch_target_counter[i]
+            # del batch_interpolated_loss[-1]
+            del batch_losses[1]
 
         for i in range(len(batch_outputs)):
             # concatenate outputs of minibatches
             batch_outputs[i] = torch.cat(batch_outputs[i], dim = 0)
 
-        return batch_outputs, losses
+        return batch_outputs, batch_losses, batch_normalized_losses, batch_interpolated_loss
 
 
 
@@ -428,7 +451,7 @@ class TransformerEncoder(nn.Module):
         if next(self.parameters()).is_cuda:
             self.min_max_losses = self.min_max_losses.cuda()
 
-        total_losses = [[], [], []]
+        # total_losses = [[], [], []]
 
         with torch.no_grad():
 
@@ -443,36 +466,34 @@ class TransformerEncoder(nn.Module):
                 if batch == None:
                     continue
 
-                batch_outputs, batch_losses = self.forward_batch(batch)
+                _, batch_losses, _, _ = self.forward_batch(batch)
 
                 # we keep track of minimum and maximum loss values per task, in oreder to later normalize for joint task training
                 for i, loss in enumerate(batch_losses):
                     if loss < self.min_max_losses[i][0]:
-                        self.min_max_losses[i][0] = loss.item()
+                        self.min_max_losses[i][0] = loss
                     if loss > self.min_max_losses[i][1]:
-                        self.min_max_losses[i][1] = loss.item()
+                        self.min_max_losses[i][1] = loss
 
-                    total_losses[i].append(loss.item())
-
-
+                    # total_losses[i].append(loss.item())
 
         # we remove the total_losses that are not being used
-        while len(total_losses[-1]) == 0:
-            del total_losses[-1]
+        # while len(total_losses[-1]) == 0:
+        #     del total_losses[-1]
 
 
-        # we average the losses and normalize them
-        average_losses = []
-        for i, loss in enumerate(total_losses):
-            average_losses.append(torch.FloatTensor(total_losses[i]).mean())
+        # # we average the losses and normalize them
+        # average_losses = []
+        # for i, loss in enumerate(total_losses):
+        #     average_losses.append(torch.FloatTensor(total_losses[i]).mean())
 
-        normalized_losses = [ loss.item() for loss in self.normalize_losses(average_losses)]
+        normalized_losses = self.normalize_losses(batch_losses)
 
-        average_losses = [ loss.item() for loss in average_losses]
+        # average_losses = [ loss.item() for loss in average_losses]
 
         interpolated_loss = self.interpolate_losses(normalized_losses)
 
-        return normalized_losses, average_losses, interpolated_loss
+        return normalized_losses, batch_losses, interpolated_loss
 
 
 
@@ -484,7 +505,7 @@ class TransformerEncoder(nn.Module):
         if self.args.debug_run:
             n_batches = 3
 
-        total_losses = [[], [], []]
+        # total_losses = [[], [], []]
 
         interpolated_losses = []
 
@@ -499,39 +520,41 @@ class TransformerEncoder(nn.Module):
             if batch == None:
                 continue
 
-            batch_outputs, batch_losses = self.forward_batch(batch)
+            # batch_outputs, batch_losses
+            # batch_outputs, batch_losses, batch_interpolated_loss
+            _, batch_losses, batch_normalized_losses, batch_interpolated_loss = self.forward_batch(batch, train=True)
 
-            # we store all losses
-            for i, loss in enumerate(batch_losses):
-                total_losses[i].append(loss.item())
+            # # we store all losses
+            # for i, loss in enumerate(batch_losses):
+            #     total_losses[i].append(loss.item())
 
-            # if the task at hand has more than one loss (involves two or more tasks), then we normalize the losses
-            if len(batch_losses) != 1:
-                batch_losses = self.normalize_losses(batch_losses)
+            # # if the task at hand has more than one loss (involves two or more tasks), then we normalize the losses
+            # if len(batch_losses) != 1:
+            #     batch_losses = self.normalize_losses(batch_losses)
 
-            batch_loss = self.interpolate_losses(batch_losses)
+            # batch_loss = self.interpolate_losses(batch_losses)
 
-            interpolated_losses.append(batch_loss.item())
+            # interpolated_losses.append(batch_loss.item())
 
-            batch_loss.backward()
+            # batch_loss.backward()
 
-            # perform update step
-            torch.nn.utils.clip_grad_norm_(self.parameters(), self.args.max_grad_norm)
+            # # perform update step
+            # torch.nn.utils.clip_grad_norm_(self.parameters(), self.args.max_grad_norm)
             
-            self.optimizer.step()
+            # self.optimizer.step()
 
-            torch.cuda.empty_cache()
+            # torch.cuda.empty_cache()
 
         # we remove the total_losses that are not being used
-        while len(total_losses[-1]) == 0:
-            del total_losses[-1]
+        # while len(total_losses[-1]) == 0:
+        #     del total_losses[-1]
 
-        # we average the losses and normalize them
-        average_losses = []
-        for i, loss in enumerate(total_losses):
-            average_losses.append(torch.FloatTensor(total_losses[i]).mean().item())
+        # # we average the losses and normalize them
+        # average_losses = []
+        # for i, loss in enumerate(total_losses):
+        #     average_losses.append(torch.FloatTensor(total_losses[i]).mean().item())
 
-        return  self.normalize_losses(average_losses), average_losses, torch.FloatTensor(interpolated_losses).mean().item()
+        return  batch_normalized_losses, batch_losses, batch_interpolated_loss
 
 
 
@@ -637,6 +660,10 @@ class FlatSemanticTransformer(TransformerEncoder):
         # nlg_targets = batch["nlg_targets"]
         # nlg_gt_inputs = batch["nlg_gt_inputs"]
 
+        # mask = sentiment_analysis_targets != -1
+
+        # print(sentiment_analysis_targets[mask])
+
         # contexts, token_types, attention_masks, category_targets, sentiment_analysis_targets, _, _, batch_movie_mentions, _ = batch
 
         # if the model is on cuda, we transfer all tensors to cuda
@@ -644,8 +671,9 @@ class FlatSemanticTransformer(TransformerEncoder):
             contexts, token_types, attention_masks, category_targets, sentiment_analysis_targets = \
              contexts.cuda(), token_types.cuda(), attention_masks.cuda(), category_targets.cuda(), sentiment_analysis_targets.cuda()
 
+
+
         # print("Contexts :", contexts.size())
-        # print("Contexts :", contexts)
         # print("attention_masks :", attention_masks.size())
         # print("token_types :", token_types.size())
         # print()
@@ -711,7 +739,7 @@ class FlatSemanticTransformer(TransformerEncoder):
             if next(self.parameters()).is_cuda:
                 cat_loss = cat_loss.cuda()
         else:
-            cat_loss = self.mse_loss(cat_pred[cat_mask].view(-1), category_targets[cat_mask].view(-1))
+            # cat_loss = self.mse_loss(cat_pred[cat_mask].view(-1), category_targets[cat_mask].view(-1))
             cat_loss = self.mse_loss(cat_pred[cat_mask].view(-1), category_targets[cat_mask].view(-1))
 
         # if category_targets is not None:
@@ -739,7 +767,12 @@ class FlatSemanticTransformer(TransformerEncoder):
             # print(sentiment_analysis_targets[sa_mask])
             # print("Cat loss:", sa_pred[sa_mask].size(), sentiment_analysis_targets[sa_mask].size())
             # sa_loss = self.mse_loss(sa_pred[sa_mask].view(-1), sentiment_analysis_targets[sa_mask].view(-1))
+            # print("SA Output :", sa_pred[sa_mask])
+            # print("SA Targets :", sentiment_analysis_targets[sa_mask])
             sa_loss = self.SA_crossE_Loss(sa_pred[sa_mask], sentiment_analysis_targets[sa_mask].long())
+
+            # print("SA Loss:", sa_loss)
+
 
 
         # # if there are no SA targets, then we do not calculate the SA loss, and set it to 0 (because it returns nan with empty tensors)
@@ -751,7 +784,9 @@ class FlatSemanticTransformer(TransformerEncoder):
         # apply softmax on SA prediction
         sa_pred = torch.nn.functional.softmax( sa_pred, dim= -1)
 
-        return [cat_pred, sa_pred], [cat_loss, sa_loss]
+        liked_prob = sa_pred[:,:,1] - sa_pred[:,:,0]
+
+        return [cat_pred, liked_prob], [cat_loss, sa_loss]
 
         # || Train this class with interleaving parameters on loss
         # make a train function

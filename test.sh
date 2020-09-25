@@ -24,7 +24,11 @@ export LD_LIBRARY_PATH=$CUDA_HOME/lib64:/hpc/eb/Debian9/cuDNN/7.1-CUDA-8.0.44-GC
 
 # python3 train.py --model auto --dataset redial --batch_size 8 --task ratings --hidden_layers 10
 
-python3 train_bert.py --CLS_mode 1_CLS --cat_sa_alpha 1.0 --use_cuda True --conversations_per_batch 1 --task semantic --use_pretrained True --max_samples_per_gpu 10
+python3 train_bert.py --CLS_mode 1_CLS --cat_sa_alpha 0 --use_cuda True --conversations_per_batch 1 \
+ --task semantic --use_pretrained True --max_samples_per_gpu 2 --input_length_limit 1024 --debug_run True
+
+
+# python3 train_bert.py --CLS_mode 1_CLS --cat_sa_alpha 1.0 --use_cuda True --conversations_per_batch 1 --task semantic --use_pretrained True --max_samples_per_gpu 
 
 # python3 train_bert.py --CLS_mode 1_CLS --cat_sa_alpha 0.0 --use_cuda True --conversations_per_batch 1 --task semantic --use_pretrained True
 

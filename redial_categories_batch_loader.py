@@ -419,6 +419,8 @@ class DialogueBatchLoader4Transformers(object):
         # if we are missing sentiment for the movies, then we asume that all mentioned movies were liked by the user,
         # we do so because the statistics of the dateset sugests so (94.3% of the mentioned movies are noted as "liked" regarding the seekers preferences)
 
+        # print(answers_dict)
+        # exit()
         # initialize category vector with zeros
         category_target = np.zeros(len(self.categories))
 
@@ -428,7 +430,15 @@ class DialogueBatchLoader4Transformers(object):
                 movie_category_vector = self.redial_id_to_categories[redial_movie_id]
                 # retrieve sentiment if there is one
                 if redial_movie_id in answers_dict:
-                    sentiment = 1 if answers_dict[redial_movie_id]["liked"] == 1 else -1
+                    # liked the movie
+                    if answers_dict[redial_movie_id]["liked"] == 1:
+                        sentiment = 1
+                    # didn't like
+                    elif answers_dict[redial_movie_id]["liked"] == 0:
+                        sentiment = -1
+                    # didn't say (answers_dict[redial_movie_id]["liked"] == 2)
+                    else:
+                        sentiment = 0
                 else:
                     # if the answer forms of this conversation are missing, then we are simply taking the average category vector of the mentioned movies
                     sentiment = 1
@@ -523,416 +533,6 @@ class DialogueBatchLoader4Transformers(object):
 
 
 
-    def load_batch_HIBERT(self, batch_data, complete = False):
-
-        # if self.HIBERT then these two lists will contain lists of items, otherwise they will contain items
-        batch_contexts = []
-        # batch_token_type_ids = []
-
-        # One way or another, this list will have a |C| dimentional vector per sample
-        batch_category_targets = []
-
-        # these indexes will be used for pooling hidden representations of MovieMentioned tokens in order to output Sentiment Analysis predictions for each
-        # batch_movie_mentioned_indexes = []
-
-        batch_nlg_targets = []
-        batch_nlg_gt_input = []
-
-
-        batch_hidden_representations_to_pool_mask = []
-        batch_dialoge_trans_positional_embeddings = []
-        batch_sentiment_analysis_targets = []
-        batch_dialogue_trans_token_type_ids = []
-        batch_NLG_pooled_tokens_mask = []
-        batch_movie_mentions = []
-        batch_CLS_pooled_tokens_mask = []
-
-
-        # this is for predicted movie mentions from recommender
-        complete_sample_movie_targets = []
-
-
-
-        max_length = 0
-
-
-        for conversation in batch_data:
-            # retrieve conversation data
-            if self.process_at_instanciation:
-                dialogue, senders, movie_mentions, category_target, answers_dict = conversation
-            else:
-                dialogue, senders, movie_mentions, category_target, answers_dict = self.extract_dialogue4Bert(conversation)
-
-            # for each message
-            for i in range(len(senders)):
-                # print(self.decode(dialogue[i]))
-                # print(senders[i])
-                # # print(category_target)
-                # print(movie_mentions[i])
-
-                # if this message was sent by the recommender
-                if senders[i] == -1:
-                    context = []
-                    token_type_ids = []
-
-                    movie_mentions_temp = []
-
-                    # for every message preceding this message
-                    for j in range(i):
-
-                        token_type_id = 0 if senders[j] == -1 else 1
-
-                        # cls tokens precede every message
-                        context.append( self.cls_token_ids + dialogue[j] )
-
-                        # token type ids will be used by the conversation transformer
-                        token_type_ids.append(token_type_id)
-
-                        # movie mentions_indeces will be used by the message transformer, in order to pool the hidden representations of the Movie_Mentioned tokens
-                        movie_mentions_temp.append( [ (token_index + len(self.cls_token_ids), redial_movie_id)  for (token_index, redial_movie_id) in movie_mentions[j]  ] )
-                        # the hidden representations of the cls tokens will also be pooled, but we know their exact positions in every message *at the begining [0 : len(self.cls_token_ids)]
-
-                    # append token id (sender) for current message
-                    token_type_ids.append( 0 if senders[i] == -1 else 1)
- 
-                    # print(movie_mentions_temp)
-
-
-
-                    # we need to add cls tokens at the begining of every message
-                    # we need to add masked nlg input at the end of the messages
-                    # we need to have an nlg target (current message, shifted by one to the left)
-                    # we need to have semantic targets ( one category target for the sample, and one sentiment analysis targert for each MovieMentioned token on the appropriate position)
-                    # we need to have a list of indexes for MovieMentined tokens for every message
-                    # we need to have token type ids for for each message
-                    # we need to have positional ids for the conversation transformer, (calcualte the number of tokens per message depending on cls tokens and MovieMentioned tokens)
-                    # and make sure that all tokens of the same message have the same positional ids
-
-
-                    # regarding attentions:
-                        # message transformer: applies attention to all given tokens (to the extend of the message length + special tokens)
-                        # dialoge transformer:
-                            # for Sentiment task, dialogue transformer applies attention to hidden representations of all pooled tokens
-                            # for NLG task, dialogue transformer applies attention only to hidden representations of EOS pooled tokens
-                            # for combining tasks, obviously the union of the above two would take place, so attention to all pooled hidden representations
-
-                    # so we only need to specify the attention mask for NLG, that only pays attention to the EOS tokens' hid repr
-
-                    # if we do not have seekers utterance yet, we set the category target to 0
-                    if 1 not in senders[ : -1]:
-                        temp_category_target = - np.ones(len(self.categories))
-                    else:
-                        temp_category_target = category_target
-
-
-                    # the input of the dialogue transformer will have the form :
-                    # [CLS TOKENS] [MovieMentioned]* len(movie_mentions_temp[0]) [EOS] [CLS TOKENS] [MovieMentioned]* len(movie_mentions_temp[1]) [EOS] ... 
-                    # where [TOKEN] represents the hidden representation of message tranformer for token [TOKEN], and [CLS TOKENS] is either [CLS] or [CLS_Cat_0, CLS_Cat_1, ..., CLS_Cat_|C|]
-
-                    hidden_representations_to_pool_mask = []
-
-                    # we set the positional embeddings for the dialogue transformer, in order to make sure that hidden representations that were pooled form the same message will have same positional embeddings
-                    dialoge_trans_positional_embeddings = []
-
-                    sentiment_analysis_targets = []
-
-                    dialogue_trans_token_type_ids = []
-
-                    NLG_pooled_tokens_mask = []
-
-                    CLS_pooled_tokens_mask = []
-
-                    movie_mentions_for_dialogue_pooled_indexes = []
-                    # print("--------------------------------------------------------------------------")
-
-                    # for each message in the context
-                    for j in range(len(context)):
-                        # print(movie_mentions_temp[j])
-                        # print(self.decode(context[j]))
-                        # increasing index, by number of pooled tokens so far
-                        # temp_movie_mentions_for_dialogue_pooled_indexes = []
-
-                        movie_mentions_for_dialogue_pooled_indexes.append( [(i + len(self.cls_tokens) + len(sentiment_analysis_targets), redial_movie_id) for i, (token_index, redial_movie_id) in enumerate(movie_mentions_temp[j])] )
-
-                        # we set the sentiment analysis targets of CLS TOKENS to -1
-                        sentiment_analysis_targets += [-1] * len(self.cls_tokens)
-                        # we set the proper sentiment analysis targets for the MovieMentioned tokens. If the sentiment analysis targets are missing, we set them to -1
-                        sentiment_analysis_targets += [answers_dict[redial_movie_id]["liked"] if redial_movie_id in answers_dict else -1 for (token_index, redial_movie_id) in movie_mentions_temp[j]]
-                        # we set the sentiment analysis targets of EOS TOKENS to -1
-                        sentiment_analysis_targets += [-1]
-
-
-                        # we instantiate a list of 0s equal to the length of current message (including special tokens)
-                        hidden_representations_to_pool_from_this_message_mask = [0] * len(context[j])
-
-                        # we pool the hidden representations of the CLS TOKENS
-                        for z in range(len(self.cls_tokens)):
-                            hidden_representations_to_pool_from_this_message_mask[z] = 1
-
-                        # we pool the hidden representations of the MovieMentioned tokens
-                        for (token_index, redial_movie_id) in  movie_mentions_temp[j]:
-                            hidden_representations_to_pool_from_this_message_mask[token_index] = 1
-
-                        # finally we pool the hidden representation of the EOS token, which is always the last token
-                        hidden_representations_to_pool_from_this_message_mask[-1] = 1
-
-                        hidden_representations_to_pool_mask.append( hidden_representations_to_pool_from_this_message_mask)
-
-                        total_pooled_tokens_from_this_message = len(self.cls_tokens) + len(movie_mentions_temp[j]) + 1 
-
-                        dialoge_trans_positional_embeddings += [j] * total_pooled_tokens_from_this_message
-
-                        dialogue_trans_token_type_ids += [token_type_ids[j]] * total_pooled_tokens_from_this_message
-
-                        CLS_tokens_mask_for_this_message = [1 if i < len(self.cls_tokens) else 0 for i in range(total_pooled_tokens_from_this_message)]
-
-
-                        CLS_pooled_tokens_mask += CLS_tokens_mask_for_this_message
-
-                        NLG_pooled_tokens_mask += [0] * total_pooled_tokens_from_this_message
-                        # we set the mask to 1 for the last token that corresponds to the EOS token
-                        NLG_pooled_tokens_mask[-1] = 1
-
-
-
-
-
-                    # we add tha current message to the token for nlg input (everything besides "SOS", will be masked)
-                    # the current message also starts with the CLS tokens in order to have homiomorphy over all messages,
-                    # which would affect for example the possitional embeddings, and the undersanding of the model
-                    current_message_masked = self.cls_token_ids + [self.encode("SOS")[0]] + len(dialogue[i][ 2 :])*[self.encode("MASK")[0]]
-                    context.append( current_message_masked )
-                    # we do not care about the EOS token, as it will not be used during evaluation time, due to the fact that it has no target
-                    nlg_gt_input = self.cls_token_ids + dialogue[i][:-1]
-
-                    # print(current_message_masked)
-                    # the last context is the current message.
-                    # From this message we pool all tokens, so that the MASK tokens, will be predicted by the dialogue encoder
-                    # last_message_representations_to_pool_mask = [1 if i < len(self.cls_tokens) else 0 for i in range(len(current_message_masked)) ]
-                    last_message_representations_to_pool_mask = [1] * len(current_message_masked)
-
-
-
-                    hidden_representations_to_pool_mask.append(last_message_representations_to_pool_mask)
-                    # taret is ground truth message shifted by 1 to the left
-
-
-                    total_pooled_tokens_from_this_message = len(current_message_masked)
-
-                    # we also pool the CLS tokens of the current message (1 for the CLS tokens, 0 for the SOS and MASK tokens)
-                    CLS_pooled_tokens_mask += len(self.cls_tokens) * [1] + ( total_pooled_tokens_from_this_message - len(self.cls_tokens)) * [0]
-
-                    dialoge_trans_positional_embeddings += [len(context) -1 ] * total_pooled_tokens_from_this_message
-
-                    # the last message does not have any sentiment analysis tokens
-                    sentiment_analysis_targets += [-1] * total_pooled_tokens_from_this_message
-
-                    dialogue_trans_token_type_ids += [token_type_ids[-1]] * total_pooled_tokens_from_this_message
-                    # 0 for the CLS tokens, 1 for the SOS and MASK tokens
-                    NLG_pooled_tokens_mask += [0] *len(self.cls_tokens) + [1] * ( total_pooled_tokens_from_this_message - len(self.cls_tokens))
-
-                    # set the nlg target to have lenght equal to the dialogue transformer output
-                    nlg_target = [-1] * len(dialoge_trans_positional_embeddings)
-                    # set the nlg targets
-                    ending_of_nlg_target = dialogue[i][ 1 :]
-                    # copy the ending of the nlg target
-                    for j in range(1, len(ending_of_nlg_target) +1 ):
-                        nlg_target[-j] = ending_of_nlg_target[-j]
-
-
-
-
-                    # if we are creating samples for the complete system that acts as a movie recommender (we create one sample for every MM in a recommender's response)
-                    if complete:
-                        # then we create exactly one sample per recommended movie (from the recommender)
-                        for idx, movie_id in movie_mentions[i]:
-
-                            batch_contexts.append(context)
-                            batch_category_targets.append(temp_category_target)
-                            batch_nlg_targets.append(nlg_target)
-                            batch_nlg_gt_input.append(nlg_gt_input)
-                            batch_hidden_representations_to_pool_mask.append(hidden_representations_to_pool_mask)
-                            batch_dialoge_trans_positional_embeddings.append(dialoge_trans_positional_embeddings)
-                            batch_sentiment_analysis_targets.append(sentiment_analysis_targets)
-                            batch_dialogue_trans_token_type_ids.append(dialogue_trans_token_type_ids)
-                            batch_NLG_pooled_tokens_mask.append(NLG_pooled_tokens_mask)
-                            batch_movie_mentions.append(movie_mentions_for_dialogue_pooled_indexes)
-                            batch_CLS_pooled_tokens_mask.append(CLS_pooled_tokens_mask)
-
-
-                            complete_sample_movie_targets.append(torch.tensor(movie_id))
-
-                    # if we are creating samples for SA, Cat prediction, or nlg (we create one sample for every recommender's response)
-                    else:
-
-                        batch_contexts.append(context)
-                        batch_category_targets.append(temp_category_target)
-                        batch_nlg_targets.append(nlg_target)
-                        batch_nlg_gt_input.append(nlg_gt_input)
-                        batch_hidden_representations_to_pool_mask.append(hidden_representations_to_pool_mask)
-                        batch_dialoge_trans_positional_embeddings.append(dialoge_trans_positional_embeddings)
-                        batch_sentiment_analysis_targets.append(sentiment_analysis_targets)
-                        batch_dialogue_trans_token_type_ids.append(dialogue_trans_token_type_ids)
-                        batch_NLG_pooled_tokens_mask.append(NLG_pooled_tokens_mask)
-                        batch_movie_mentions.append(movie_mentions_for_dialogue_pooled_indexes)
-                        batch_CLS_pooled_tokens_mask.append(CLS_pooled_tokens_mask)
-                #     print()
-
-
-                    # print("Sample: ")
-                    # print("Contexts:")
-                    # for j in range(len(context)):
-                    #     print("Context: ", self.decode(context[j]))
-                    # #     print("Context: ", len(context[j]))
-                    # #     # print("Sender :", len(token_type_ids[j]))
-                    #     print("hidden_representations_to_pool_mask:", hidden_representations_to_pool_mask[j])
-                    # # print("hidden_representations_to_pool_mask:", np.sum(hidden_representations_to_pool_mask))
-
-                    # print(":dialoge_trans_positional_embeddings", dialoge_trans_positional_embeddings)
-                    # # print(":sentiment_analysis_targets", len(sentiment_analysis_targets))
-                    # print(":dialogue_trans_token_type_ids", dialogue_trans_token_type_ids)
-                    # # print(":NLG_pooled_tokens_mask", len(NLG_pooled_tokens_mask))
-                    # # print(":CLS_pooled_tokens_mask", len(CLS_pooled_tokens_mask))
-                    # #     # print(":", )
-                    # #     # print(":", )
-                    # # print("nlg_target: ", len(nlg_target))
-                    # # print()
-                    # # print(temp_category_target)
-                    # # exit()
-                    # print()
-                    # break
-
-        #     print()
-        #     for i in range(len(batch_contexts)):
-
-        #         print(self.decode(batch_contexts[i]), len(batch_contexts[i]))
-        #         print(batch_token_type_ids[i], len(batch_token_type_ids[i]))
-        #         print(batch_category_targets[i])
-        #         for index in batch_movie_mentioned_indexes[i]:
-        #             print(self.decode(batch_contexts[i][index]))
-        #         print(batch_movie_mentioned_indexes[i])
-        #         # print(self.decode(batch_nlg_inputs[i]))
-
-        #         printable_nlg_target = [ -1 if token_id == -1 else self.decode(token_id) for token_id in batch_nlg_targets[i]]
-        #         # print(batch_nlg_targets[i])
-        #         print(printable_nlg_target)
-        #         print()
-
-        # print()
-
-
-        # then bring the batch into its final form (Padded tensors of same size, attentions [maybe Semantic att and NLG att], form index tensors for extracting the MM token hid reprs )
-
-        # +1 in order to ensure that the nlg_gt_input wull fit, because the masked inputs and the targets are shorter by 1 w.r.t. nlg_gt_input
-        # (due to predicting the next token given the current one, so there is no target for the last token etc.)
-
-        # There is at least one case where a dialogue contains only one sentence, we skip that, as it is not a proper conversation
-        if len(batch_contexts) == 0:
-            return None
-
-
-        max_message_length = np.max( [ np.max( [ len(message) for message in context]) for context in batch_contexts ] )
-
-        max_dialogue_length = np.max( [len(context) for context in batch_contexts ])
-
-        max_dialogue_trans_input = np.max([ len(pos_embeddings) for pos_embeddings in batch_dialoge_trans_positional_embeddings])
-
-        # print("max_message_length: ", max_message_length)
-        # print("max_dialogue_length: ", max_dialogue_length)
-        # print("max_dialogue_trans_input: ", max_dialogue_trans_input)
-
-        # exit()
-
-        num_of_samples = len(batch_contexts)
-
-        # allocate memory for all variables needed, that has same shape for every sample
-        contexts = np.full((num_of_samples, max_dialogue_length, max_message_length), fill_value = self.encode("PAD")[0], dtype=np.int64)
-        context_attentions = np.full((num_of_samples, max_dialogue_length, max_message_length), fill_value = 0, dtype=np.bool_)
-        category_targets = np.zeros((num_of_samples, len(self.categories)), dtype=np.float32)
-        nlg_targets = np.full((num_of_samples, max_dialogue_trans_input), fill_value = -1, dtype=np.int64)
-        nlg_gt_inputs = np.full((num_of_samples, max_message_length), fill_value = self.encode("PAD")[0], dtype=np.int64)
-        pool_hidden_representations_mask = np.full((num_of_samples, max_dialogue_length, max_message_length), fill_value = 0, dtype=np.bool_)
-        dialogue_trans_positional_embeddings = np.full((num_of_samples, max_dialogue_trans_input), fill_value = 0, dtype=np.int64)
-        # sentiment_analysis_targets = np.full((num_of_samples, max_dialogue_trans_input), fill_value = -1, dtype=np.int64)
-        dialogue_trans_token_type_ids = np.full((num_of_samples, max_dialogue_trans_input), fill_value = 0, dtype=np.int64)
-        nlg_dialogue_mask_tokens = np.full((num_of_samples, max_dialogue_trans_input), fill_value = 0, dtype=np.bool_)
-        dialogue_trans_attentions = np.full((num_of_samples, max_dialogue_trans_input), fill_value = 0, dtype=np.bool_)
-        sentiment_analysis_targets = np.full((num_of_samples, max_dialogue_trans_input), fill_value = -1, dtype=np.float32)
-        CLS_pooled_tokens_mask = np.full((num_of_samples, max_dialogue_trans_input), fill_value = 0, dtype=np.bool_)
-
-                    # batch_contexts.append(context)
-                    # batch_category_targets.append(temp_category_target)
-                    # batch_nlg_targets.append(nlg_target)
-                    # batch_hidden_representations_to_pool_mask.append(hidden_representations_to_pool_mask)
-                    # batch_dialoge_trans_positional_embeddings.append(dialoge_trans_positional_embeddings)
-                    # batch_sentiment_analysis_targets.append(sentiment_analysis_targets)
-                    # batch_dialogue_trans_token_type_ids.append(dialogue_trans_token_type_ids)
-                    # batch_NLG_pooled_tokens_mask.append(NLG_pooled_tokens_mask)
-
-
-        for i in range(num_of_samples):
-
-            for j in range(len(batch_contexts[i])):
-                contexts[i][j][ : len(batch_contexts[i][j])] = batch_contexts[i][j]
-                context_attentions[i][j][ : len(batch_contexts[i][j])] = 1
-                pool_hidden_representations_mask[i][j][ : len(batch_hidden_representations_to_pool_mask[i][j]) ] = batch_hidden_representations_to_pool_mask[i][j]
-
-            category_targets[i] = batch_category_targets[i]
-            nlg_targets[i, : len(batch_nlg_targets[i])] = batch_nlg_targets[i]
-            nlg_gt_inputs[i, : len(batch_nlg_gt_input[i])] = batch_nlg_gt_input[i]
-            dialogue_trans_positional_embeddings[i, : len(batch_dialoge_trans_positional_embeddings[i])] = batch_dialoge_trans_positional_embeddings[i]
-            sentiment_analysis_targets[i, : len(batch_sentiment_analysis_targets[i])] = batch_sentiment_analysis_targets[i]
-            dialogue_trans_token_type_ids[i, : len(batch_dialogue_trans_token_type_ids[i]) ] = batch_dialogue_trans_token_type_ids[i]
-            nlg_dialogue_mask_tokens[i, : len(batch_NLG_pooled_tokens_mask[i]) ] = batch_NLG_pooled_tokens_mask[i]
-            dialogue_trans_attentions[i, : len(batch_dialogue_trans_token_type_ids[i]) ] = 1
-            CLS_pooled_tokens_mask[i, : len(batch_CLS_pooled_tokens_mask[i])] = batch_CLS_pooled_tokens_mask[i]
-
-        contexts = torch.tensor(contexts)
-        context_attentions = torch.tensor(context_attentions)
-        category_targets = torch.tensor(category_targets)
-        nlg_targets = torch.tensor(nlg_targets)
-        nlg_gt_inputs = torch.tensor(nlg_gt_inputs)
-        pool_hidden_representations_mask = torch.tensor(pool_hidden_representations_mask)
-        dialogue_trans_positional_embeddings = torch.tensor(dialogue_trans_positional_embeddings)
-        sentiment_analysis_targets = torch.tensor(sentiment_analysis_targets)
-        dialogue_trans_token_type_ids = torch.tensor(dialogue_trans_token_type_ids)
-        nlg_dialogue_mask_tokens = torch.tensor(nlg_dialogue_mask_tokens)
-        dialogue_trans_attentions = torch.tensor(dialogue_trans_attentions)
-        CLS_pooled_tokens_mask = torch.tensor(CLS_pooled_tokens_mask)
-
-        if complete:
-            complete_sample_movie_targets = torch.stack(complete_sample_movie_targets)
-
-
-
-        batch = {}
-
-        batch["contexts"] = contexts
-        batch["context_attentions"] = context_attentions
-        batch["category_targets"] = category_targets
-        batch["nlg_targets"] = nlg_targets
-        batch["nlg_gt_inputs"] = nlg_gt_inputs
-        batch["pool_hidden_representations_mask"] = pool_hidden_representations_mask
-        batch["dialogue_trans_positional_embeddings"] = dialogue_trans_positional_embeddings
-        batch["sentiment_analysis_targets"] = sentiment_analysis_targets
-        batch["dialogue_trans_token_type_ids"] = dialogue_trans_token_type_ids
-        batch["nlg_dialogue_mask_tokens"] = nlg_dialogue_mask_tokens
-        batch["dialogue_trans_attentions"] = dialogue_trans_attentions
-        batch["CLS_pooled_tokens_mask"] = CLS_pooled_tokens_mask
-        batch["batch_movie_mentions"] = batch_movie_mentions
-        batch["complete_sample_movie_targets"] = complete_sample_movie_targets
-
-        return batch
-
-        # return contexts, context_attentions, category_targets, nlg_targets, nlg_gt_inputs, pool_hidden_representations_mask, dialogue_trans_positional_embeddings, \
-            # sentiment_analysis_targets, dialogue_trans_token_type_ids, nlg_dialogue_mask_tokens, dialogue_trans_attentions, CLS_pooled_tokens_mask, batch_movie_mentions, complete_sample_movie_targets
-
-
-
-
-
-
-
 
     def load_batch_FLAT(self, batch_data, complete = False):
 
@@ -956,6 +556,10 @@ class DialogueBatchLoader4Transformers(object):
         # this is for predicted movie mentions from recommender
         complete_sample_movie_targets = []
 
+        batch_indices_of_MM = []
+        batch_movie_ids = []
+        batch_SA_target = []
+
 
 
         max_length = 0
@@ -973,6 +577,7 @@ class DialogueBatchLoader4Transformers(object):
                 # print(self.decode(dialogue[i]))
                 # print(senders[i])
                 # print(category_target)
+
                 # print(movie_mentions[i])
 
                 # if this message was sent by the recommender
@@ -1070,6 +675,23 @@ class DialogueBatchLoader4Transformers(object):
                     # print("LENGTH NLG target :", len(printable_nlg_target))
 
 
+# print(movie_mentions)
+# exit()
+
+
+# indices_of_MM = []
+# movie_ids = []
+# SA_target = []
+
+# for index, movie_id in movie_mentions[i]:
+#   # retrieve target
+#   target = answers_dict[redial_movie_id]["liked"] if redial_movie_id in answers_dict else -1
+
+#   indices_of_MM.append(index)
+#   movie_ids.append(movie_id)
+#   SA_target.append(target)
+# we do not set up the SA targets like this, but only keep the indices of the movies + the SA target of that one
+
 
                     # set up the sentiment analysis targets for the sample
                     sentiment_analysis_targets = [-1] * len(context)
@@ -1077,6 +699,7 @@ class DialogueBatchLoader4Transformers(object):
                     for (index, redial_movie_id) in movie_mentions_temp:
                         # if the sentiment analysis targets are missing, then we set the targets to 0
                         sentiment_analysis_targets[index] = answers_dict[redial_movie_id]["liked"] if redial_movie_id in answers_dict else -1
+
 
                     # make sentiment analysis targets
 
@@ -1117,6 +740,16 @@ class DialogueBatchLoader4Transformers(object):
                         batch_movie_mentions.append(movie_mentions_temp)
                         batch_nlg_targets.append(nlg_target)
                         batch_nlg_gt_input.append(nlg_gt_input)
+
+
+# torch.tensor(data, dtype=None, device=None, requires_grad=False, pin_memory=False) 
+# # np.float32
+#                       batch_indices_of_MM.append( torch.tensor(indices_of_MM, dtype=int64))
+#                       batch_movie_ids.append(torch.tensor(movie_ids, dtype=int64))
+#                       batch_SA_target.append(torch.tensor(SA_target, dtype=int64))
+
+
+
                         batch_sentiment_analysis_targets.append(sentiment_analysis_targets)
 
 
@@ -1154,6 +787,7 @@ class DialogueBatchLoader4Transformers(object):
         # else:
 
         # allocating tensors for saving the samples into containers of equal size
+        # numpy
         contexts = np.full((num_of_samples, max_length), fill_value = self.encode("PAD")[0], dtype=np.int64)
 
         token_types = np.full((num_of_samples, max_length), fill_value=0, dtype=np.int64)
@@ -1164,11 +798,12 @@ class DialogueBatchLoader4Transformers(object):
 
         sentiment_analysis_targets = np.full((num_of_samples, max_length), fill_value = -1, dtype=np.float32)
 
+
         # attentions = np.full((num_of_samples, max_length), fill_value = 0, dtype=np.bool_)
 
-        nlg_targets = np.full((num_of_samples, max_length), fill_value = -1, dtype=np.int64)
+        # nlg_targets = np.full((num_of_samples, max_length), fill_value = -1, dtype=np.int64)
 
-        nlg_gt_inputs = np.full((num_of_samples, max_length), fill_value = self.encode("PAD")[0], dtype=np.int64)
+        # nlg_gt_inputs = np.full((num_of_samples, max_length), fill_value = self.encode("PAD")[0], dtype=np.int64)
 
         for i in range(num_of_samples):
             # fill in the values in the containers
@@ -1177,8 +812,8 @@ class DialogueBatchLoader4Transformers(object):
             attention_masks[i, : len(batch_contexts[i])] = True
             category_targets[i] = batch_category_targets[i]
             sentiment_analysis_targets[i, : len(batch_sentiment_analysis_targets[i])] = batch_sentiment_analysis_targets[i]
-            nlg_targets[i, : len(batch_nlg_targets[i])] = len(batch_nlg_targets[i])
-            nlg_gt_inputs[i, : len(batch_nlg_gt_input[i])] = len(batch_nlg_gt_input[i])
+            # nlg_targets[i, : len(batch_nlg_targets[i])] = len(batch_nlg_targets[i])
+            # nlg_gt_inputs[i, : len(batch_nlg_gt_input[i])] = len(batch_nlg_gt_input[i])
 
 
         contexts = torch.tensor(contexts)
@@ -1186,13 +821,26 @@ class DialogueBatchLoader4Transformers(object):
         attention_masks = torch.tensor(attention_masks)
         category_targets = torch.tensor(category_targets)
         sentiment_analysis_targets = torch.tensor(sentiment_analysis_targets)
-        nlg_targets = torch.tensor(nlg_targets)
-        nlg_gt_inputs = torch.tensor(nlg_gt_inputs)
+        # nlg_targets = torch.tensor(nlg_targets)
+        # nlg_gt_inputs = torch.tensor(nlg_gt_inputs)
 
 
         if complete:
             complete_sample_movie_targets = torch.stack(complete_sample_movie_targets)
 
+
+        # check if sentiment analysis targets are aligned with context 
+        # mask = sentiment_analysis_targets != -1
+
+        # correct = torch.tensor( [30525] * mask.sum())
+
+        # if (contexts[mask] - correct).sum() !=0:
+        #     print("Error !")
+        #     print(contexts[mask])
+        #     # print("Correct")
+        #     exit()
+
+        # print(contexts[mask])
 
 
         batch = {}
@@ -1202,8 +850,8 @@ class DialogueBatchLoader4Transformers(object):
         batch["attention_masks"] = attention_masks
         batch["category_targets"] = category_targets
         batch["sentiment_analysis_targets"] = sentiment_analysis_targets
-        batch["nlg_targets"] = nlg_targets
-        batch["nlg_gt_inputs"] = nlg_gt_inputs
+        # batch["nlg_targets"] = nlg_targets
+        # batch["nlg_gt_inputs"] = nlg_gt_inputs
         batch["batch_movie_mentions"] = batch_movie_mentions
         batch["complete_sample_movie_targets"] = complete_sample_movie_targets
         
@@ -2077,4 +1725,414 @@ def get_movies(path):
     #     last_context_token_mask = torch.tensor(last_context_token_mask)
 
     #     return contexts, token_types, attention_masks, targets, last_context_token_mask
+
+
+
+
+    def load_batch_HIBERT(self, batch_data, complete = False):
+
+        # if self.HIBERT then these two lists will contain lists of items, otherwise they will contain items
+        batch_contexts = []
+        # batch_token_type_ids = []
+
+        # One way or another, this list will have a |C| dimentional vector per sample
+        batch_category_targets = []
+
+        # these indexes will be used for pooling hidden representations of MovieMentioned tokens in order to output Sentiment Analysis predictions for each
+        # batch_movie_mentioned_indexes = []
+
+        batch_nlg_targets = []
+        batch_nlg_gt_input = []
+
+
+        batch_hidden_representations_to_pool_mask = []
+        batch_dialoge_trans_positional_embeddings = []
+        batch_sentiment_analysis_targets = []
+        batch_dialogue_trans_token_type_ids = []
+        batch_NLG_pooled_tokens_mask = []
+        batch_movie_mentions = []
+        batch_CLS_pooled_tokens_mask = []
+
+
+        # this is for predicted movie mentions from recommender
+        complete_sample_movie_targets = []
+
+
+
+        max_length = 0
+
+
+        for conversation in batch_data:
+            # retrieve conversation data
+            if self.process_at_instanciation:
+                dialogue, senders, movie_mentions, category_target, answers_dict = conversation
+            else:
+                dialogue, senders, movie_mentions, category_target, answers_dict = self.extract_dialogue4Bert(conversation)
+
+            # for each message
+            for i in range(len(senders)):
+                # print(self.decode(dialogue[i]))
+                # print(senders[i])
+                # # print(category_target)
+                # print(movie_mentions[i])
+
+                # if this message was sent by the recommender
+                if senders[i] == -1:
+                    context = []
+                    token_type_ids = []
+
+                    movie_mentions_temp = []
+
+                    # for every message preceding this message
+                    for j in range(i):
+
+                        token_type_id = 0 if senders[j] == -1 else 1
+
+                        # cls tokens precede every message
+                        context.append( self.cls_token_ids + dialogue[j] )
+
+                        # token type ids will be used by the conversation transformer
+                        token_type_ids.append(token_type_id)
+
+                        # movie mentions_indeces will be used by the message transformer, in order to pool the hidden representations of the Movie_Mentioned tokens
+                        movie_mentions_temp.append( [ (token_index + len(self.cls_token_ids), redial_movie_id)  for (token_index, redial_movie_id) in movie_mentions[j]  ] )
+                        # the hidden representations of the cls tokens will also be pooled, but we know their exact positions in every message *at the begining [0 : len(self.cls_token_ids)]
+
+                    # append token id (sender) for current message
+                    token_type_ids.append( 0 if senders[i] == -1 else 1)
+ 
+                    # print(movie_mentions_temp)
+
+
+
+                    # we need to add cls tokens at the begining of every message
+                    # we need to add masked nlg input at the end of the messages
+                    # we need to have an nlg target (current message, shifted by one to the left)
+                    # we need to have semantic targets ( one category target for the sample, and one sentiment analysis targert for each MovieMentioned token on the appropriate position)
+                    # we need to have a list of indexes for MovieMentined tokens for every message
+                    # we need to have token type ids for for each message
+                    # we need to have positional ids for the conversation transformer, (calcualte the number of tokens per message depending on cls tokens and MovieMentioned tokens)
+                    # and make sure that all tokens of the same message have the same positional ids
+
+
+                    # regarding attentions:
+                        # message transformer: applies attention to all given tokens (to the extend of the message length + special tokens)
+                        # dialoge transformer:
+                            # for Sentiment task, dialogue transformer applies attention to hidden representations of all pooled tokens
+                            # for NLG task, dialogue transformer applies attention only to hidden representations of EOS pooled tokens
+                            # for combining tasks, obviously the union of the above two would take place, so attention to all pooled hidden representations
+
+                    # so we only need to specify the attention mask for NLG, that only pays attention to the EOS tokens' hid repr
+
+                    # if we do not have seekers utterance yet, we set the category target to 0
+                    if 1 not in senders[ : -1]:
+                        temp_category_target = - np.ones(len(self.categories))
+                    else:
+                        temp_category_target = category_target
+
+
+                    # the input of the dialogue transformer will have the form :
+                    # [CLS TOKENS] [MovieMentioned]* len(movie_mentions_temp[0]) [EOS] [CLS TOKENS] [MovieMentioned]* len(movie_mentions_temp[1]) [EOS] ... 
+                    # where [TOKEN] represents the hidden representation of message tranformer for token [TOKEN], and [CLS TOKENS] is either [CLS] or [CLS_Cat_0, CLS_Cat_1, ..., CLS_Cat_|C|]
+
+                    hidden_representations_to_pool_mask = []
+
+                    # we set the positional embeddings for the dialogue transformer, in order to make sure that hidden representations that were pooled form the same message will have same positional embeddings
+                    dialoge_trans_positional_embeddings = []
+
+                    sentiment_analysis_targets = []
+
+                    dialogue_trans_token_type_ids = []
+
+                    NLG_pooled_tokens_mask = []
+
+                    CLS_pooled_tokens_mask = []
+
+                    movie_mentions_for_dialogue_pooled_indexes = []
+                    # print("--------------------------------------------------------------------------")
+
+                    # for each message in the context
+                    for j in range(len(context)):
+                        # print(movie_mentions_temp[j])
+                        # print(self.decode(context[j]))
+                        # increasing index, by number of pooled tokens so far
+                        # temp_movie_mentions_for_dialogue_pooled_indexes = []
+
+                        movie_mentions_for_dialogue_pooled_indexes.append( [(i + len(self.cls_tokens) + len(sentiment_analysis_targets), redial_movie_id) for i, (token_index, redial_movie_id) in enumerate(movie_mentions_temp[j])] )
+
+                        # we set the sentiment analysis targets of CLS TOKENS to -1
+                        sentiment_analysis_targets += [-1] * len(self.cls_tokens)
+                        # we set the proper sentiment analysis targets for the MovieMentioned tokens. If the sentiment analysis targets are missing, we set them to -1
+                        sentiment_analysis_targets += [answers_dict[redial_movie_id]["liked"] if redial_movie_id in answers_dict else -1 for (token_index, redial_movie_id) in movie_mentions_temp[j]]
+                        # we set the sentiment analysis targets of EOS TOKENS to -1
+                        sentiment_analysis_targets += [-1]
+
+
+                        # we instantiate a list of 0s equal to the length of current message (including special tokens)
+                        hidden_representations_to_pool_from_this_message_mask = [0] * len(context[j])
+
+                        # we pool the hidden representations of the CLS TOKENS
+                        for z in range(len(self.cls_tokens)):
+                            hidden_representations_to_pool_from_this_message_mask[z] = 1
+
+                        # we pool the hidden representations of the MovieMentioned tokens
+                        for (token_index, redial_movie_id) in  movie_mentions_temp[j]:
+                            hidden_representations_to_pool_from_this_message_mask[token_index] = 1
+
+                        # finally we pool the hidden representation of the EOS token, which is always the last token
+                        hidden_representations_to_pool_from_this_message_mask[-1] = 1
+
+                        hidden_representations_to_pool_mask.append( hidden_representations_to_pool_from_this_message_mask)
+
+                        total_pooled_tokens_from_this_message = len(self.cls_tokens) + len(movie_mentions_temp[j]) + 1 
+
+                        dialoge_trans_positional_embeddings += [j] * total_pooled_tokens_from_this_message
+
+                        dialogue_trans_token_type_ids += [token_type_ids[j]] * total_pooled_tokens_from_this_message
+
+                        CLS_tokens_mask_for_this_message = [1 if i < len(self.cls_tokens) else 0 for i in range(total_pooled_tokens_from_this_message)]
+
+
+                        CLS_pooled_tokens_mask += CLS_tokens_mask_for_this_message
+
+                        NLG_pooled_tokens_mask += [0] * total_pooled_tokens_from_this_message
+                        # we set the mask to 1 for the last token that corresponds to the EOS token
+                        NLG_pooled_tokens_mask[-1] = 1
+
+
+
+
+
+                    # we add tha current message to the token for nlg input (everything besides "SOS", will be masked)
+                    # the current message also starts with the CLS tokens in order to have homiomorphy over all messages,
+                    # which would affect for example the possitional embeddings, and the undersanding of the model
+                    current_message_masked = self.cls_token_ids + [self.encode("SOS")[0]] + len(dialogue[i][ 2 :])*[self.encode("MASK")[0]]
+                    context.append( current_message_masked )
+                    # we do not care about the EOS token, as it will not be used during evaluation time, due to the fact that it has no target
+                    nlg_gt_input = self.cls_token_ids + dialogue[i][:-1]
+
+                    # print(current_message_masked)
+                    # the last context is the current message.
+                    # From this message we pool all tokens, so that the MASK tokens, will be predicted by the dialogue encoder
+                    # last_message_representations_to_pool_mask = [1 if i < len(self.cls_tokens) else 0 for i in range(len(current_message_masked)) ]
+                    last_message_representations_to_pool_mask = [1] * len(current_message_masked)
+
+
+
+                    hidden_representations_to_pool_mask.append(last_message_representations_to_pool_mask)
+                    # taret is ground truth message shifted by 1 to the left
+
+
+                    total_pooled_tokens_from_this_message = len(current_message_masked)
+
+                    # we also pool the CLS tokens of the current message (1 for the CLS tokens, 0 for the SOS and MASK tokens)
+                    CLS_pooled_tokens_mask += len(self.cls_tokens) * [1] + ( total_pooled_tokens_from_this_message - len(self.cls_tokens)) * [0]
+
+                    dialoge_trans_positional_embeddings += [len(context) -1 ] * total_pooled_tokens_from_this_message
+
+                    # the last message does not have any sentiment analysis tokens
+                    sentiment_analysis_targets += [-1] * total_pooled_tokens_from_this_message
+
+                    dialogue_trans_token_type_ids += [token_type_ids[-1]] * total_pooled_tokens_from_this_message
+                    # 0 for the CLS tokens, 1 for the SOS and MASK tokens
+                    NLG_pooled_tokens_mask += [0] *len(self.cls_tokens) + [1] * ( total_pooled_tokens_from_this_message - len(self.cls_tokens))
+
+                    # set the nlg target to have lenght equal to the dialogue transformer output
+                    nlg_target = [-1] * len(dialoge_trans_positional_embeddings)
+                    # set the nlg targets
+                    ending_of_nlg_target = dialogue[i][ 1 :]
+                    # copy the ending of the nlg target
+                    for j in range(1, len(ending_of_nlg_target) +1 ):
+                        nlg_target[-j] = ending_of_nlg_target[-j]
+
+
+
+
+                    # if we are creating samples for the complete system that acts as a movie recommender (we create one sample for every MM in a recommender's response)
+                    if complete:
+                        # then we create exactly one sample per recommended movie (from the recommender)
+                        for idx, movie_id in movie_mentions[i]:
+
+                            batch_contexts.append(context)
+                            batch_category_targets.append(temp_category_target)
+                            batch_nlg_targets.append(nlg_target)
+                            batch_nlg_gt_input.append(nlg_gt_input)
+                            batch_hidden_representations_to_pool_mask.append(hidden_representations_to_pool_mask)
+                            batch_dialoge_trans_positional_embeddings.append(dialoge_trans_positional_embeddings)
+                            batch_sentiment_analysis_targets.append(sentiment_analysis_targets)
+                            batch_dialogue_trans_token_type_ids.append(dialogue_trans_token_type_ids)
+                            batch_NLG_pooled_tokens_mask.append(NLG_pooled_tokens_mask)
+                            batch_movie_mentions.append(movie_mentions_for_dialogue_pooled_indexes)
+                            batch_CLS_pooled_tokens_mask.append(CLS_pooled_tokens_mask)
+
+
+                            complete_sample_movie_targets.append(torch.tensor(movie_id))
+
+                    # if we are creating samples for SA, Cat prediction, or nlg (we create one sample for every recommender's response)
+                    else:
+
+                        batch_contexts.append(context)
+                        batch_category_targets.append(temp_category_target)
+                        batch_nlg_targets.append(nlg_target)
+                        batch_nlg_gt_input.append(nlg_gt_input)
+                        batch_hidden_representations_to_pool_mask.append(hidden_representations_to_pool_mask)
+                        batch_dialoge_trans_positional_embeddings.append(dialoge_trans_positional_embeddings)
+                        batch_sentiment_analysis_targets.append(sentiment_analysis_targets)
+                        batch_dialogue_trans_token_type_ids.append(dialogue_trans_token_type_ids)
+                        batch_NLG_pooled_tokens_mask.append(NLG_pooled_tokens_mask)
+                        batch_movie_mentions.append(movie_mentions_for_dialogue_pooled_indexes)
+                        batch_CLS_pooled_tokens_mask.append(CLS_pooled_tokens_mask)
+                #     print()
+
+
+                    # print("Sample: ")
+                    # print("Contexts:")
+                    # for j in range(len(context)):
+                    #     print("Context: ", self.decode(context[j]))
+                    # #     print("Context: ", len(context[j]))
+                    # #     # print("Sender :", len(token_type_ids[j]))
+                    #     print("hidden_representations_to_pool_mask:", hidden_representations_to_pool_mask[j])
+                    # # print("hidden_representations_to_pool_mask:", np.sum(hidden_representations_to_pool_mask))
+
+                    # print(":dialoge_trans_positional_embeddings", dialoge_trans_positional_embeddings)
+                    # # print(":sentiment_analysis_targets", len(sentiment_analysis_targets))
+                    # print(":dialogue_trans_token_type_ids", dialogue_trans_token_type_ids)
+                    # # print(":NLG_pooled_tokens_mask", len(NLG_pooled_tokens_mask))
+                    # # print(":CLS_pooled_tokens_mask", len(CLS_pooled_tokens_mask))
+                    # #     # print(":", )
+                    # #     # print(":", )
+                    # # print("nlg_target: ", len(nlg_target))
+                    # # print()
+                    # # print(temp_category_target)
+                    # # exit()
+                    # print()
+                    # break
+
+        #     print()
+        #     for i in range(len(batch_contexts)):
+
+        #         print(self.decode(batch_contexts[i]), len(batch_contexts[i]))
+        #         print(batch_token_type_ids[i], len(batch_token_type_ids[i]))
+        #         print(batch_category_targets[i])
+        #         for index in batch_movie_mentioned_indexes[i]:
+        #             print(self.decode(batch_contexts[i][index]))
+        #         print(batch_movie_mentioned_indexes[i])
+        #         # print(self.decode(batch_nlg_inputs[i]))
+
+        #         printable_nlg_target = [ -1 if token_id == -1 else self.decode(token_id) for token_id in batch_nlg_targets[i]]
+        #         # print(batch_nlg_targets[i])
+        #         print(printable_nlg_target)
+        #         print()
+
+        # print()
+
+
+        # then bring the batch into its final form (Padded tensors of same size, attentions [maybe Semantic att and NLG att], form index tensors for extracting the MM token hid reprs )
+
+        # +1 in order to ensure that the nlg_gt_input wull fit, because the masked inputs and the targets are shorter by 1 w.r.t. nlg_gt_input
+        # (due to predicting the next token given the current one, so there is no target for the last token etc.)
+
+        # There is at least one case where a dialogue contains only one sentence, we skip that, as it is not a proper conversation
+        if len(batch_contexts) == 0:
+            return None
+
+
+        max_message_length = np.max( [ np.max( [ len(message) for message in context]) for context in batch_contexts ] )
+
+        max_dialogue_length = np.max( [len(context) for context in batch_contexts ])
+
+        max_dialogue_trans_input = np.max([ len(pos_embeddings) for pos_embeddings in batch_dialoge_trans_positional_embeddings])
+
+        # print("max_message_length: ", max_message_length)
+        # print("max_dialogue_length: ", max_dialogue_length)
+        # print("max_dialogue_trans_input: ", max_dialogue_trans_input)
+
+        # exit()
+
+        num_of_samples = len(batch_contexts)
+
+        # allocate memory for all variables needed, that has same shape for every sample
+        contexts = np.full((num_of_samples, max_dialogue_length, max_message_length), fill_value = self.encode("PAD")[0], dtype=np.int64)
+        context_attentions = np.full((num_of_samples, max_dialogue_length, max_message_length), fill_value = 0, dtype=np.bool_)
+        category_targets = np.zeros((num_of_samples, len(self.categories)), dtype=np.float32)
+        nlg_targets = np.full((num_of_samples, max_dialogue_trans_input), fill_value = -1, dtype=np.int64)
+        nlg_gt_inputs = np.full((num_of_samples, max_message_length), fill_value = self.encode("PAD")[0], dtype=np.int64)
+        pool_hidden_representations_mask = np.full((num_of_samples, max_dialogue_length, max_message_length), fill_value = 0, dtype=np.bool_)
+        dialogue_trans_positional_embeddings = np.full((num_of_samples, max_dialogue_trans_input), fill_value = 0, dtype=np.int64)
+        # sentiment_analysis_targets = np.full((num_of_samples, max_dialogue_trans_input), fill_value = -1, dtype=np.int64)
+        dialogue_trans_token_type_ids = np.full((num_of_samples, max_dialogue_trans_input), fill_value = 0, dtype=np.int64)
+        nlg_dialogue_mask_tokens = np.full((num_of_samples, max_dialogue_trans_input), fill_value = 0, dtype=np.bool_)
+        dialogue_trans_attentions = np.full((num_of_samples, max_dialogue_trans_input), fill_value = 0, dtype=np.bool_)
+        sentiment_analysis_targets = np.full((num_of_samples, max_dialogue_trans_input), fill_value = -1, dtype=np.float32)
+        CLS_pooled_tokens_mask = np.full((num_of_samples, max_dialogue_trans_input), fill_value = 0, dtype=np.bool_)
+
+                    # batch_contexts.append(context)
+                    # batch_category_targets.append(temp_category_target)
+                    # batch_nlg_targets.append(nlg_target)
+                    # batch_hidden_representations_to_pool_mask.append(hidden_representations_to_pool_mask)
+                    # batch_dialoge_trans_positional_embeddings.append(dialoge_trans_positional_embeddings)
+                    # batch_sentiment_analysis_targets.append(sentiment_analysis_targets)
+                    # batch_dialogue_trans_token_type_ids.append(dialogue_trans_token_type_ids)
+                    # batch_NLG_pooled_tokens_mask.append(NLG_pooled_tokens_mask)
+
+
+        for i in range(num_of_samples):
+
+            for j in range(len(batch_contexts[i])):
+                contexts[i][j][ : len(batch_contexts[i][j])] = batch_contexts[i][j]
+                context_attentions[i][j][ : len(batch_contexts[i][j])] = 1
+                pool_hidden_representations_mask[i][j][ : len(batch_hidden_representations_to_pool_mask[i][j]) ] = batch_hidden_representations_to_pool_mask[i][j]
+
+            category_targets[i] = batch_category_targets[i]
+            nlg_targets[i, : len(batch_nlg_targets[i])] = batch_nlg_targets[i]
+            nlg_gt_inputs[i, : len(batch_nlg_gt_input[i])] = batch_nlg_gt_input[i]
+            dialogue_trans_positional_embeddings[i, : len(batch_dialoge_trans_positional_embeddings[i])] = batch_dialoge_trans_positional_embeddings[i]
+            sentiment_analysis_targets[i, : len(batch_sentiment_analysis_targets[i])] = batch_sentiment_analysis_targets[i]
+            dialogue_trans_token_type_ids[i, : len(batch_dialogue_trans_token_type_ids[i]) ] = batch_dialogue_trans_token_type_ids[i]
+            nlg_dialogue_mask_tokens[i, : len(batch_NLG_pooled_tokens_mask[i]) ] = batch_NLG_pooled_tokens_mask[i]
+            dialogue_trans_attentions[i, : len(batch_dialogue_trans_token_type_ids[i]) ] = 1
+            CLS_pooled_tokens_mask[i, : len(batch_CLS_pooled_tokens_mask[i])] = batch_CLS_pooled_tokens_mask[i]
+
+        contexts = torch.tensor(contexts)
+        context_attentions = torch.tensor(context_attentions)
+        category_targets = torch.tensor(category_targets)
+        nlg_targets = torch.tensor(nlg_targets)
+        nlg_gt_inputs = torch.tensor(nlg_gt_inputs)
+        pool_hidden_representations_mask = torch.tensor(pool_hidden_representations_mask)
+        dialogue_trans_positional_embeddings = torch.tensor(dialogue_trans_positional_embeddings)
+        sentiment_analysis_targets = torch.tensor(sentiment_analysis_targets)
+        dialogue_trans_token_type_ids = torch.tensor(dialogue_trans_token_type_ids)
+        nlg_dialogue_mask_tokens = torch.tensor(nlg_dialogue_mask_tokens)
+        dialogue_trans_attentions = torch.tensor(dialogue_trans_attentions)
+        CLS_pooled_tokens_mask = torch.tensor(CLS_pooled_tokens_mask)
+
+        if complete:
+            complete_sample_movie_targets = torch.stack(complete_sample_movie_targets)
+
+
+
+        batch = {}
+
+        batch["contexts"] = contexts
+        batch["context_attentions"] = context_attentions
+        batch["category_targets"] = category_targets
+        batch["nlg_targets"] = nlg_targets
+        batch["nlg_gt_inputs"] = nlg_gt_inputs
+        batch["pool_hidden_representations_mask"] = pool_hidden_representations_mask
+        batch["dialogue_trans_positional_embeddings"] = dialogue_trans_positional_embeddings
+        batch["sentiment_analysis_targets"] = sentiment_analysis_targets
+        batch["dialogue_trans_token_type_ids"] = dialogue_trans_token_type_ids
+        batch["nlg_dialogue_mask_tokens"] = nlg_dialogue_mask_tokens
+        batch["dialogue_trans_attentions"] = dialogue_trans_attentions
+        batch["CLS_pooled_tokens_mask"] = CLS_pooled_tokens_mask
+        batch["batch_movie_mentions"] = batch_movie_mentions
+        batch["complete_sample_movie_targets"] = complete_sample_movie_targets
+
+        return batch
+
+        # return contexts, context_attentions, category_targets, nlg_targets, nlg_gt_inputs, pool_hidden_representations_mask, dialogue_trans_positional_embeddings, \
+            # sentiment_analysis_targets, dialogue_trans_token_type_ids, nlg_dialogue_mask_tokens, dialogue_trans_attentions, CLS_pooled_tokens_mask, batch_movie_mentions, complete_sample_movie_targets
+
+
+
 
