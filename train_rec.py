@@ -18,9 +18,9 @@ import config
 
 from ml_batch_loader_with_categories import MlBatchLoader_with_categories
 
-from redial_categories_batch_loader import DialogueBatchLoader4Categories
+from redial_categories_batch_loader_new import DialogueBatchLoader4Categories
 
-from autoencoder import AutoEncoder, AutoEncoderWithCategories
+from autoencoder import AutoEncoder, AutoEncoderWithCategories, Embedder
 
 # from categories_dataset import Categories_Dataset
 
@@ -38,7 +38,7 @@ parser.add_argument("--input_dir", default="", type=str)
 
 parser.add_argument("--train_epochs", default=100, type=int)
 
-parser.add_argument("--num_of_workers", default=4, type=int)
+parser.add_argument("--num_of_workers", default=0, type=int)
 parser.add_argument("--patience", default=5, type=int)
 parser.add_argument("--batch_size", default=1, type=int)
 parser.add_argument("--use_cuda", default=True, type=str)
@@ -130,9 +130,14 @@ else:
 if args.model == "cat_aware":
     # instantiate the category predictor
     model = AutoEncoderWithCategories(number_of_movies = batch_loader.n_movies, num_of_categories = len(batch_loader.categories), layer_sizes=args.hidden_layers, decoder_mode = args.decoder_mode, task = args.task, load_model_path = args.input_dir, transfer_learning = args.transfer_learning)
+elif args.model == "embedder":
+	model = Embedder(n_movies = batch_loader.n_movies, num_of_categories = len(batch_loader.categories), task = args.task)
 else:
     model = AutoEncoder(n_movies = batch_loader.n_movies, layer_sizes = args.hidden_layers, num_of_categories = len(batch_loader.categories), load_model_path = args.input_dir)
 
+
+# print(model)
+# exit()
 
 if args.use_cuda:
     model = model.cuda()
@@ -164,12 +169,12 @@ for epoch in range(args.train_epochs):
     # load training batches
     if args.dataset == "redial":
         batch_data, number_of_batches = batch_loader.get_batched_samples(subset = "train", batch_size = args.batch_size)
-        print(number_of_batches)
-        batch_data, number_of_batches = batch_loader.get_batched_samples(subset = "valid", batch_size = args.batch_size)
-        print(number_of_batches)
-        batch_data, number_of_batches = batch_loader.get_batched_samples(subset = "test", batch_size = args.batch_size)
-        print(number_of_batches)
-        exit()
+        # # print(number_of_batches)
+        # batch_data, number_of_batches = batch_loader.get_batched_samples(subset = "valid", batch_size = args.batch_size)
+        # # print(number_of_batches)
+        # batch_data, number_of_batches = batch_loader.get_batched_samples(subset = "test", batch_size = args.batch_size)
+        # print(number_of_batches)
+        # exit()
 
 
 
@@ -210,7 +215,7 @@ for epoch in range(args.train_epochs):
         else:
             if args.dataset == "redial":
                 # this is for redial trained on ratings
-                loss = model.evaluate_output_multithreaded(input = input_vectors, target = rating_targets, output = output, num_of_workers = args.num_of_workers)
+                loss = model.evaluate_output_multithreaded(input = input_vectors, target = rating_targets, output = output, num_of_workers = args.num_of_workers, eval_ranking = False)
             else:
                 # this is for MovieLens trained on ratings
                 loss = model.calculate_batch_loss(output = output, target = rating_targets)

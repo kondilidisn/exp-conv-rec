@@ -53,8 +53,8 @@ def main():
                         help="Total number of training epochs to perform.")
 
 
-    parser.add_argument("--conversations_per_batch", default=16, type=int)
-    parser.add_argument("--base_conversations_per_batch", default=2, type=int)
+    parser.add_argument("--conversations_per_batch", default=1, type=int)
+    parser.add_argument("--base_conversations_per_batch", default=1, type=int)
     parser.add_argument("--max_samples_per_gpu", default=-1, type=int,
                         help="If > 0: Splits a conversation into minibatches of size equal to this. Otherwise the batch is an integer of conversations as defined in --conversations_per_batch.")
 
@@ -63,13 +63,13 @@ def main():
     parser.add_argument("--input_length_limit", default=1024, type=int)
     parser.add_argument("--hidden_size", default=64, type=int)
     parser.add_argument("--num_hidden_layers", default=2, type=int)
-    parser.add_argument("--num_attention_heads", default=4, type=int)
+    parser.add_argument("--num_attention_heads", default=2, type=int)
     parser.add_argument("--intermediate_size", default=256, type=int)
 
     parser.add_argument('--seed', type=int, default=42)
 
 
-    parser.add_argument("--cat_sa_alpha", default=0.5, type=float)
+    parser.add_argument("--cat_sa_alpha", default=1.0, type=float)
     parser.add_argument("--sem_nlg_alpha", default=0.5, type=float)
 
 
@@ -78,10 +78,10 @@ def main():
 
 
     # parser.add_argument("--use_CLS_output", default="True", type=str)
-    parser.add_argument("--use_1_CLS", default="False", type=str)
+    parser.add_argument("--CLS_mode", default="1_CLS", type=str) # CLS_mode = "1_CLS" or "C_CLS_1_linear" or "C_CLS_C_linears"
     parser.add_argument("--HIBERT", default="False", type=str)
     parser.add_argument("--task", default="semantic", type=str)  # task = "semantic" or "nlg" or "pretrained" or "full"
-    parser.add_argument("--use_gpt2", default="False", type=str)
+    parser.add_argument("--use_pretrained", default="True", type=str)
 
 
     parser.add_argument("--debug_run", default="False", type=str)
@@ -105,9 +105,8 @@ def main():
     args = parser.parse_args()
 
     args.HIBERT = True if args.HIBERT == "True" else False
-    args.use_gpt2 = True if args.use_gpt2 == "True" else False
+    args.use_pretrained = True if args.use_pretrained == "True" else False
     # args.use_CLS_output = True if args.use_CLS_output == "True" else False
-    args.use_1_CLS = True if args.use_1_CLS == "True" else False
     args.use_cuda = True if args.use_cuda == "True" else False
     args.debug_run = True if args.debug_run == "True" else False
     args.finetune = True if args.finetune == "True" else False
@@ -136,7 +135,7 @@ def main():
 
     # instanciate batch loader
     # batch_loader = DialogueBatchLoader4Categories(sources="dialogue_to_categories ratings", conversations_per_batch=args.conversations_per_batch, max_input_length = args.input_length_limit)
-    # batch_loader = DialogueBatchLoader4Transformers(conversations_per_batch=args.conversations_per_batch, max_input_length = args.input_length_limit, HIBERT = args.HIBERT, use_gpt2 = args.use_gpt2, use_1_CLS = args.use_1_CLS)
+    # batch_loader = DialogueBatchLoader4Transformers(conversations_per_batch=args.conversations_per_batch, max_input_length = args.input_length_limit, HIBERT = args.HIBERT, use_pretrained = args.use_pretrained, use_1_CLS = args.use_1_CLS)
 
 
     # batch = batch_loader.load_batch(subset="train", complete = True)
@@ -167,6 +166,8 @@ def main():
 
     # We always renew the directory we save models and logs, except for the case we are building the CAAE Decoder
     if not ( args.CAAE_encoder == False and args.rec_model == "CAAE"):
+
+
 
         if os.path.isdir(args.output_dir):
             shutil.rmtree(args.output_dir)
@@ -200,13 +201,13 @@ def main():
     torch.cuda.manual_seed_all(args.seed)
 
     # if we are using GPT2, then we set the hidden size of the transformers to be equal to the GPT2 hidden size
-    if args.use_gpt2:
+    if args.use_pretrained:
         args.hidden_size = 768
 
 
     # instanciate batch loader
     # batch_loader = DialogueBatchLoader4Categories(sources="dialogue_to_categories ratings", conversations_per_batch=args.conversations_per_batch, max_input_length = args.input_length_limit)
-    batch_loader = DialogueBatchLoader4Transformers(conversations_per_batch=args.conversations_per_batch, max_input_length = args.input_length_limit, HIBERT = args.HIBERT, use_gpt2 = args.use_gpt2, use_1_CLS = args.use_1_CLS)
+    batch_loader = DialogueBatchLoader4Transformers(conversations_per_batch=args.conversations_per_batch, max_input_length = args.input_length_limit, HIBERT = args.HIBERT, use_pretrained = args.use_pretrained, CLS_mode = args.CLS_mode)
 
 
     # print( batch_loader.vocabulary_size)
@@ -401,19 +402,19 @@ def init(args):
     base_model_dir += "_" + args.task
 
     if args.task == "semantic":
-        base_model_dir += "_1_CLS" if args.use_1_CLS else "_|C|_CLS"
+        base_model_dir += "_" + args.CLS_mode
         base_model_dir += "_CAT_SA_a_" + str(args.cat_sa_alpha)
 
     if args.task == "full" or args.task == "pretrained":
-        base_model_dir += "_1_CLS" if args.use_1_CLS else "_|C|_CLS"
+        base_model_dir += "_" + args.CLS_mode
         base_model_dir += "_CAT_SA_a_" + str(args.cat_sa_alpha)
         base_model_dir += "_SEM_NLG_a_" + str(args.sem_nlg_alpha)
 
 
-    if args.use_gpt2:
-        base_model_dir += "_GPT2"
+    if args.use_pretrained:
+        base_model_dir += "_Pretrained"
     else:
-        base_model_dir += "_Hidden_" + str(args.hidden_size) + "_Layers_" + str(args.num_hidden_layers) + "_Heads_" + str(args.num_attention_heads) + "_Inter_" + str(args.intermediate_size)
+        base_model_dir += "_Hidden_" + str(args.hidden_size) + "_Layers_" + str(args.num_hidden_layers) + "_Heads_" + str(args.num_attention_heads)# + "_Inter_" + str(args.intermediate_size)
 
     base_model_dir += "_BS_" + str(args.base_conversations_per_batch)
 
