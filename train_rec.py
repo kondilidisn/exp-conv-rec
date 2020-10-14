@@ -150,7 +150,8 @@ if args.decoder_mode == "fixed" and args.task == "ratings":
 # setting up 
 patience_count = 0
 if args.task == "ratings" and args.dataset == "redial":
-    checkpoint_criteria = ["hit_at_1", "hit_at_10", "hit_at_100", "ratings_loss", "Av_rank"]
+    checkpoint_criteria = ["hit_at_1", "hit_at_10"]
+    # checkpoint_criteria = ["hit_at_1", "hit_at_10", "hit_at_100", "ratings_loss", "Av_rank"]
 
 else:
     checkpoint_criteria = ["loss"]
