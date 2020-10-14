@@ -120,9 +120,6 @@ def main():
     args.use_cuda = True if args.use_cuda == "True" and torch.cuda.is_available() else False
     args.debug_run = True if args.debug_run == "True" else False
 
-
-    print("Make sure position of Movie_Mentioned tokens, corresponds to final output index ALWAYS!")
-
     # make sure that Experiments directory already exists (args.exp_dir)
     os.makedirs(args.exp_dir, exist_ok=True)
 
