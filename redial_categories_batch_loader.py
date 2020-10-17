@@ -24,6 +24,15 @@ import sys
 import nltk
 
 
+def softmax_with_temperature(tensor, temperature):
+	temperature_tensor = np.ones_like(tensor)*temperature
+	# apply temperature on tensor
+	tempered_tensor = tensor/temperature_tensor
+	# apply softmax
+	output = np.exp(tempered_tensor)/sum(np.exp(tempered_tensor))
+
+	return output
+
 
 def tokenize(message):
 	"""
@@ -78,7 +87,8 @@ class DialogueBatchLoader4Transformers(object):
 				 shuffle_data=False,
 				 process_at_instanciation=False,
 				 vocab_file = "vocabulary/nli_large_vocab.pkl",
-				 special_tokens_list = ['SOS', 'EOS', 'MASK', 'PAD', 'UNK', 'SEP', 'Movie_Mentioned']):
+				 special_tokens_list = ['SOS', 'EOS', 'MASK', 'PAD', 'UNK', 'SEP', 'Movie_Mentioned'],
+				 temperature = 0.5):
 		# sources paramater: string "dialogue/sentiment_analysis [movie_occurrences] [movieIds_in_target]"
 		# self.sources = sources
 		self.conversations_per_batch = conversations_per_batch
@@ -101,6 +111,7 @@ class DialogueBatchLoader4Transformers(object):
 		self.HIBERT = HIBERT
 		self.use_pretrained = use_pretrained
 		self.CLS_mode = CLS_mode
+		self.temperature = temperature
 
 
 		self.load_movie_information_with_category_vectors()
@@ -605,7 +616,7 @@ class DialogueBatchLoader4Transformers(object):
 						# then we add the movie mentions token indexes of the new message
 						movie_mentions_temp =  [ (token_index + len(self.cls_token_ids), redial_movie_id) for (token_index, redial_movie_id) in movie_mentions[j]  ]  +  movie_mentions_temp
 
-					print(movie_mentions_temp)
+					# print(movie_mentions_temp)
 
 
 					# and then we add the cls token ids at the begining
@@ -618,7 +629,7 @@ class DialogueBatchLoader4Transformers(object):
 					# If the context is non empty (contains at least one sentence), then we properly create category and sentiment analysis targets
 					if len(context) != len(self.cls_token_ids):
 
-						# temp_category_target = category_target
+						temp_category_target = category_target
 						# instead of givint the conversation CPD, we give the item's binary category vector
 						# temp_category_target = self.redial_id_to_categories[redial_movie_id]
 
@@ -646,23 +657,26 @@ class DialogueBatchLoader4Transformers(object):
 					# if there is no context, then we set the semmantic targets to  -1 
 					else:
 
-						temp_category_target = - np.ones(len(self.categories))
+						# we don't care for NLG samples at the moment
+						continue
+
+						# temp_category_target = - np.ones(len(self.categories))
 
 
-						# we also define the nlg input, tha will begiven, for the perplexity to be calculated
-						nlg_gt_input = context + dialogue[i][:-1]
+						# # we also define the nlg input, tha will begiven, for the perplexity to be calculated
+						# nlg_gt_input = context + dialogue[i][:-1]
 
-						# the targets of the context tokens are being set to -1.
-						nlg_target = ( len(context))*[-1] + dialogue[i][ 1 :] # + [self.encode("EOS")[0]]
+						# # the targets of the context tokens are being set to -1.
+						# nlg_target = ( len(context))*[-1] + dialogue[i][ 1 :] # + [self.encode("EOS")[0]]
 
 
-						# finally, we add the the current sentence masked to the context.
-						context = context + [self.encode("SOS")[0]] + len(dialogue[i][ 2 :])*[self.encode("MASK")[0]]
+						# # finally, we add the the current sentence masked to the context.
+						# context = context + [self.encode("SOS")[0]] + len(dialogue[i][ 2 :])*[self.encode("MASK")[0]]
 
-						# nlg_gt_input = context + [self.encode("SOS")[0]] + len(dialogue[i][ 2 :])*[self.encode("MASK")[0]]
+						# # nlg_gt_input = context + [self.encode("SOS")[0]] + len(dialogue[i][ 2 :])*[self.encode("MASK")[0]]
 
-						token_type_id = 0 if senders[i] == -1 else 1
-						token_type_ids = token_type_ids + [token_type_id] * (len(dialogue[i]) -1 ) 
+						# token_type_id = 0 if senders[i] == -1 else 1
+						# token_type_ids = token_type_ids + [token_type_id] * (len(dialogue[i]) -1 ) 
 
 
 
@@ -724,7 +738,24 @@ class DialogueBatchLoader4Transformers(object):
 						for idx, movie_id in movie_mentions[i]:
 
 						# instead of givint the conversation CPD, we give the item's binary category vector
-							temp_category_target = self.redial_id_to_categories[movie_id]
+							target_binary_cat_vector = self.redial_id_to_categories[movie_id]
+
+							# set 1 to 0.9 and 0 to 0.1
+
+							# print(target_binary_cat_vector)
+							for i, target in enumerate(target_binary_cat_vector):
+								if target == 0:
+									target_binary_cat_vector[i] = 0.1
+								if target == 1:
+									target_binary_cat_vector[i] = 0.9
+
+							# print(target_binary_cat_vector)
+							# exit()
+
+							# temp_category_target = softmax_with_temperature(target_binary_cat_vector, self.temperature)
+							temp_category_target = target_binary_cat_vector
+							# temp_category_target = target_binary_cat_vector/sum(target_binary_cat_vector)
+							# temp_category_target = softmax()
 
 							batch_contexts.append(context)
 							batch_token_type_ids.append(token_type_ids)

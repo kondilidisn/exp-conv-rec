@@ -92,6 +92,11 @@ def main():
 
 
 
+
+    parser.add_argument("--use_ground_truth", default=False, type=str)
+
+
+
     # parser.add_argument("--per_gpu_train_conversations_per_batch", default=4, type=int,
     #                     help="Batch size per GPU/CPU for training.")
     # parser.add_argument("--per_gpu_eval_conversations_per_batch", default=4, type=int,
@@ -119,11 +124,15 @@ def main():
     # args.CLS_mode = True if args.CLS_mode == "True" else False
     args.use_cuda = True if args.use_cuda == "True" and torch.cuda.is_available() else False
     args.debug_run = True if args.debug_run == "True" else False
+    args.use_ground_truth = True if args.use_ground_truth == "True" else False
 
     # make sure that Experiments directory already exists (args.exp_dir)
     os.makedirs(args.exp_dir, exist_ok=True)
 
     checkpoint_handler, Model_Class, output_dir = init(args)
+
+
+    output_dir += "_complete_samples_sigmoid_output_binary_cat_target_0.1_0.9"
 
 
 
@@ -430,7 +439,7 @@ def init(args):
     else:
         output_dir += "_Hidden_" + str(args.hidden_size) + "_Layers_" + str(args.num_hidden_layers) + "_Heads_" + str(args.num_attention_heads) + "_Inter_" + str(args.intermediate_size)
 
-    output_dir += "_BS_" + str(args.conversations_per_batch) + "_miniBS_" + str(args.max_samples_per_gpu)
+    # output_dir += "_BS_" + str(args.conversations_per_batch) + "_miniBS_" + str(args.max_samples_per_gpu)
 
     return checkpoint_handler, Model_Class, output_dir
 

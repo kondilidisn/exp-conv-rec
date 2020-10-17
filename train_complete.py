@@ -46,6 +46,15 @@ def main():
     parser.add_argument('--val_filename', type=str, default='valid_data')
     parser.add_argument('--test_filename', type=str, default='test_data')
 
+    parser.add_argument("--learning_rate", default=1e-4, type=float,
+                        help="The initial learning rate for Adam.")
+    # parser.add_argument("--weight_decay", default=0.0, type=float,
+    #                     help="Weight decay if we apply some.")
+    parser.add_argument("--adam_epsilon", default=1e-8, type=float,
+                        help="Epsilon for Adam optimizer.")
+    parser.add_argument("--max_grad_norm", default=1.0, type=float,
+                        help="Max gradient norm.")
+
 
     # parser.add_argument('--max_train_epochs', type=int, default=100)
     parser.add_argument('--patience', type=int, default=5)
@@ -98,7 +107,7 @@ def main():
     parser.add_argument("--Base_Model_Class", default="", type=str) 
     parser.add_argument("--base_model_name", default="", type=str, help = "Depending on the recommender model, we load either Best SA or CatPred performance Transformer model.")
 
-    parser.add_argument('--rec_layer_sizes','--list', nargs='+', default=[1000])
+    parser.add_argument('--rec_layer_sizes','--list', nargs='+', default=[])
     
 
 
@@ -190,6 +199,8 @@ def main():
     logging.getLogger(nltk.__name__).setLevel(logging.ERROR)
 
     args.n_gpu = torch.cuda.device_count() if args.use_cuda else 1
+
+    args.n_gpu = 1
 
     logger.info(args)
     print(args)
