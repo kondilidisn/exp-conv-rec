@@ -69,7 +69,10 @@ class TextModel(nn.Module):
 		# self = self.cuda()
 		# load base model
 		if args.use_ground_truth == False:
-			self.base_model.load_state_dict(torch.load( os.path.join(args.base_model_dir, args.base_model_name) ))
+			# self.base_model.load_state_dict(torch.load( os.path.join(args.base_model_dir, args.base_model_name) ))
+			self.base_model.load_state_dict(torch.load( os.path.join(args.base_model_dir, "best_Inter_Loss.pickle") ))
+
+
 
 		# if we are not finetuning, but we do transfer learning, then we freeze the parameters of the base model
 		if args.finetune == False or args.use_ground_truth == True:
@@ -523,14 +526,19 @@ class FullCatDecoder(TextModel):
 			cat_pred = batch["category_targets"]
 			# sa_pred = batch["sentiment_analysis_targets"]
 		else:
+			# for a in batch:
+			# 	print (a)
+			# 	print(batch[a])
 			# print(batch["contexts"])
 			base_outputs, base_losses = self.base_model(batch)
 			cat_pred = base_outputs[0]
+
+
 			# print("Predicted:", cat_pred)
 			# print ("GT:", batch["category_targets"])
 			# print("Difference :",  cat_pred - batch["category_targets"])
 			# sa_pred = base_outputs[1]
-
+			# exit()
 
 
 		input = cat_pred

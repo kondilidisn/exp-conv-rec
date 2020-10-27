@@ -128,9 +128,13 @@ def main():
 
     checkpoint_handler, Base_Model_Class, base_model_dir, base_model_name, Model_Class, output_dir = init(args)
 
-    args.base_model_dir = base_model_dir if args.base_model_dir == "" else ""
+    args.base_model_dir = base_model_dir
     args.Base_Model_Class = Base_Model_Class
     args.base_model_name = base_model_name
+
+    if len(args.rec_layer_sizes) !=0:
+    	for layer_size in args.rec_layer_sizes:
+    		output_dir += "_" + str(layer_size)
 
 
 
@@ -429,6 +433,8 @@ def init(args):
 
     base_model_dir += "_BS_" + str(args.base_conversations_per_batch)
 
+    base_model_dir = base_model_dir if args.base_model_dir == "" else args.base_model_dir
+
 
     output_dir = os.path.join(base_model_dir,  "Recommender")
 
@@ -438,9 +444,9 @@ def init(args):
 
     output_dir += "_BS" + str(args.conversations_per_batch)
 
+    output_dir += "_lr_" + str(args.learning_rate)
 
-
-
+    output_dir += "_fine_" + str(args.finetune)
 
 
     return checkpoint_handler, Base_Model_Class, base_model_dir, base_model_name, Model_Class, output_dir

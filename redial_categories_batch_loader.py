@@ -740,14 +740,27 @@ class DialogueBatchLoader4Transformers(object):
 						# instead of givint the conversation CPD, we give the item's binary category vector
 							target_binary_cat_vector = self.redial_id_to_categories[movie_id]
 
+							# print(target_binary_cat_vector)
+							# if category vector of item is unknown, we set the target to -1
+							# if sum(target_binary_cat_vector) == len(self.categories):
+							# 	target_binary_cat_vector = np.ones(len(self.categories))*-1
+
+
+							# if category vector of item is unknown, we set the target to 0.5, which is he "neutral" of sigmoid
+							# if sum(target_binary_cat_vector) == len(self.categories):
+							# 	target_binary_cat_vector = np.ones(len(self.categories))/2
+
+							# print(target_binary_cat_vector)
+
+							# exit()
 							# set 1 to 0.9 and 0 to 0.1
 
 							# print(target_binary_cat_vector)
-							for i, target in enumerate(target_binary_cat_vector):
-								if target == 0:
-									target_binary_cat_vector[i] = 0.1
-								if target == 1:
-									target_binary_cat_vector[i] = 0.9
+							# for i, target in enumerate(target_binary_cat_vector):
+							# 	if target == 0:
+							# 		target_binary_cat_vector[i] = 0.1
+							# 	if target == 1:
+							# 		target_binary_cat_vector[i] = 0.9
 
 							# print(target_binary_cat_vector)
 							# exit()

@@ -1,0 +1,62 @@
+#!/bin/bash
+# Set job requirements
+#SBATCH --job-name=1_0.5
+#SBATCH --ntasks=1
+#SBATCH --time=24:00:00
+#SBATCH --partition=gpu_shared
+
+#SBATCH --mail-type=BEGIN,END
+#SBATCH --mail-user=kondilidisn9@gmail.com
+
+#Loading modules
+module purge
+module load pre2019
+module load 2019
+module load eb
+module load Python/3.6.6-foss-2019b
+#module load Python/3.7.5-foss-2019b
+module load cuDNN/7.0.5-CUDA-9.0.176
+module load NCCL/2.0.5-CUDA-9.0.176 
+
+export LD_LIBRARY_PATH=$CUDA_HOME/lib64:/hpc/eb/Debian9/cuDNN/7.1-CUDA-8.0.44-GCCcore-5.4.0/lib64:$LD_LIBRARY_PATHs
+
+# python3 train.py --model cat_aware --dataset redial --batch_size 16 --task ratings --hidden_layers 1000
+
+# python3 train.py --model auto --dataset redial --batch_size 8 --task ratings --hidden_layers 10
+
+
+
+
+
+# python3 train_bert.py --CLS_mode 1_CLS --cat_sa_alpha 1.0 --use_cuda True --conversations_per_batch 1 --task semantic --use_pretrained True --max_samples_per_gpu 
+
+# python3 train_bert.py --CLS_mode 1_CLS --cat_sa_alpha 0.0 --use_cuda True --conversations_per_batch 1 --task semantic --use_pretrained True
+
+# python3 train_bert.py --CLS_mode 1_CLS --cat_sa_alpha 0.5 --use_cuda True --conversations_per_batch 1 --task semantic --use_pretrained True
+
+
+
+
+
+
+# python3 train_complete.py --CLS_mode 1_CLS --cat_sa_alpha 1.0 --use_cuda True --conversations_per_batch 1 \
+#  --task semantic --use_pretrained True --max_samples_per_gpu 5 --input_length_limit 1024 --debug_run True --use_ground_truth False
+
+
+python3 train_complete.py --CLS_mode 1_CLS --cat_sa_alpha 1.0 --use_cuda True --conversations_per_batch 1 \
+ --task semantic --rec_model Cat2Item --use_pretrained True --max_samples_per_gpu 5 --input_length_limit 1024 --debug_run False --use_ground_truth False --finetune False \
+ --base_model_dir experiments/FLAT_semantic_1_CLS_CAT_SA_a_1.0_Pretrained_BS_10_complete_samples_sigmoid_output_0.5_to_unknown
+
+
+python3 train_complete.py --CLS_mode 1_CLS --cat_sa_alpha 1.0 --use_cuda True --conversations_per_batch 2 \
+ --task semantic --rec_model Cat2Item --use_pretrained True --max_samples_per_gpu 5 --input_length_limit 1024 --debug_run False --use_ground_truth False --finetune False \
+ --base_model_dir experiments/FLAT_semantic_1_CLS_CAT_SA_a_1.0_Pretrained_BS_10_complete_samples_sigmoid_output_0.5_to_unknown
+
+
+
+# python3 train_complete.py --CLS_mode 1_CLS --cat_sa_alpha 1.0 --use_cuda True --conversations_per_batch 1 \
+#  --task semantic --rec_model CAAE --use_pretrained True --max_samples_per_gpu 5 --input_length_limit 1024 --debug_run False --use_ground_truth True --finetune False --CAAE_encoder True
+
+# python3 train_complete.py --CLS_mode 1_CLS --cat_sa_alpha 1.0 --use_cuda True --conversations_per_batch 1 \
+#  --task semantic --rec_model CAAE --use_pretrained True --max_samples_per_gpu 5 --input_length_limit 1024 --debug_run False --use_ground_truth False --finetune False --CAAE_encoder False
+

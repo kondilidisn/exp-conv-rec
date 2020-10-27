@@ -689,9 +689,14 @@ class FlatSemanticTransformer(TransformerEncoder):
 		# print("token_types :", token_types.size())
 		# print()
 
+		# print(contexts)
+
 
 		last_hidden_state, _ = self.encoder(input_ids = contexts, attention_mask=attention_masks, token_type_ids=token_types)
 
+
+		# print(last_hidden_state.size())
+		# print(last_hidden_state)
 
 		# we only use the hidden states of the last layer
 		# hidden_states = last_hidden_state # hidden_states[-1]
@@ -702,7 +707,7 @@ class FlatSemanticTransformer(TransformerEncoder):
 
 		# print("CLS_input:")
 		# print(cls_input.size())
-		print(cls_input.sum(dim=-1))
+		# print(cls_input.sum(dim=-1))
 
 
 
@@ -735,7 +740,8 @@ class FlatSemanticTransformer(TransformerEncoder):
 
 
 		# print("cat_pred:")
-		# print(cat_pred.size())
+		# print(cat_pred)
+		# exit()
 		# print("category_targets")
 		# print(category_targets.size())
 		# exit()
