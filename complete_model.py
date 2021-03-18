@@ -80,8 +80,8 @@ class Complete_Model(nn.Module):
 
 				for minibatch in minibatches:
 					
-					if next(self.parameters()).is_cuda:
-						minibatch = self.base_model.make_batch_multiple_of_GPUs_for_DataParallel(minibatch)
+					# if next(self.parameters()).is_cuda:
+					# 	minibatch = self.base_model.make_batch_multiple_of_GPUs_for_DataParallel(minibatch)
 
 
 					output, loss = self(minibatch)
@@ -127,12 +127,12 @@ class Complete_Model(nn.Module):
 
 				minibatch_to_batch_ratio = minibatch_size / batch_size
 
-				torch.cuda.empty_cache()
+				# torch.cuda.empty_cache()
 
-				if next(self.parameters()).is_cuda:
-					minibatch = self.base_model.make_batch_multiple_of_GPUs_for_DataParallel(minibatch)
+				# if next(self.parameters()).is_cuda:
+				# 	minibatch = self.base_model.make_batch_multiple_of_GPUs_for_DataParallel(minibatch)
 						
-				torch.cuda.empty_cache()
+				# torch.cuda.empty_cache()
 
 				# do the forward pass
 				output, loss = self(minibatch)
