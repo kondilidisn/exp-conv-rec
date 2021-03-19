@@ -22,6 +22,9 @@ from tqdm import tqdm
 
 import transformers
 
+# print(transformers.__path__)
+# exit()
+
 
 # from transformers import BertTokenizer
 
@@ -235,6 +238,59 @@ def main():
 
 	model = Cat_Pref_BERT(vocab_size = batch_loader.vocabulary_size, cat_size = len(batch_loader.categories), n_movies = batch_loader.n_movies, args = args)
 
+
+
+	# contexts = np.full((2, 1000), fill_value = batch_loader.encode("PAD")[0], dtype=np.int64)
+
+	# token_types = np.full((2, 1000), fill_value=0, dtype=np.int64)
+
+	# attention_masks = np.full((2, 1000), fill_value = 1, dtype=np.bool_)
+
+	# category_targets = np.zeros((2, 19), dtype=np.float32)
+	# # batch = []
+
+	# contexts = torch.tensor(contexts)
+	# token_types = torch.tensor(token_types)
+	# attention_masks = torch.tensor(attention_masks)
+	# category_targets = torch.tensor(category_targets)
+
+
+	# last_hidden_state = model.encoder(input_ids = contexts, attention_mask=attention_masks, token_type_ids=token_types)[0]
+
+	# cls_input = last_hidden_state[:, : model.n_cls_tokens, :]
+	# # pass each CLS hidden activation, through its corresponding trainable linear function
+	# cat_pred = []
+	# # cat_pred = torch.zeros_like(category_targets)
+	# for i in range(model.n_cls_tokens):
+	# 	cat_pred.append( model.cat_prediction[i]( cls_input[:,i, :] ) )
+	# # bring the predicted category vectors to their final form
+	# cat_pred = torch.stack( cat_pred, dim = 1).view(category_targets.size())
+
+
+
+	# # pass the activations through softmax activation function
+	# # cat_pred = torch.nn.functional.softmax( cat_pred, dim= -1)
+
+	# # Use sigmoid instead
+	# cat_pred = torch.sigmoid(cat_pred)
+
+
+	# cat_mask = (category_targets != -1).view(category_targets.size())
+
+	# if cat_mask.sum() == 0:
+	# 	cat_loss = model.mse_loss(torch.ones(1), torch.ones(1))
+	# 	if next(model.parameters()).is_cuda:
+	# 		cat_loss = cat_loss.cuda()
+	# else:
+	# 	# cat_loss = self.mse_loss(cat_pred[cat_mask].view(-1), category_targets[cat_mask].view(-1))
+	# 	cat_loss = model.mse_loss(cat_pred[cat_mask].view(-1), category_targets[cat_mask].view(-1))
+
+	# cat_loss.backward()
+
+	# model.optimizer.step()
+
+
+	# exit()
 
 
 	# model.load_state_dict(torch.load( os.path.join("experiments/Developing...FLAT_semantic_1_CLS_CAT_SA_a_1.0_Pretrained_complete_samples_sigmoid_output_binary_cat_target_0.1_0.9", "best_Inter_Loss.pickle") ))

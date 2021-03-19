@@ -37,19 +37,58 @@ class Cat_Pref_BERT(nn.Module):
 
 			self.encoder = transformers.BertModel.from_pretrained('bert-base-uncased')
 
+			# print(self.encoder.embeddings.position_embeddings.weight)
+			# exit()
+
 			# if requested, we have to extend the parameters of the positional embeddings, so that the input length limit can be increased.
 			if args.input_length_limit > 512:
-				# instantiate new extended positional embedding parameters
-				new_positional_embeddings = nn.Embedding(num_embeddings=args.input_length_limit, embedding_dim=768)
-				# copy pretrained parameters of existing positions (<=512)
-				new_positional_embeddings.weight[:512, :].data = self.encoder.embeddings.position_embeddings.weight.data
-				# replace paramters in model
-				self.encoder.embeddings.position_embeddings.weight = nn.Parameter(new_positional_embeddings.weight)
+				# create new positional embeddings of the appropriate new max input length
+				pos_emb_weights = torch.Tensor(args.input_length_limit, 768)
+				# initialize their values
+				torch.nn.init.normal_(pos_emb_weights)	
+				# copy first 512 positional embeddings from the pretrained bert
+				pos_emb_weights [:512, :] = self.encoder.embeddings.position_embeddings.weight.clone()
 
+
+
+
+
+				# create Embeddings, out of the parameters
+				new_positional_embeddings = nn.Embedding(num_embeddings=args.input_length_limit, embedding_dim=768, _weight= pos_emb_weights)
+
+
+				# print(new_positional_embeddings.weight.size())
+				# print(self.encoder.embeddings.position_embeddings.weight.size())
+				# copy pretrained parameters of existing positions (<=512)
+				# new_positional_embeddings.weight[:512, :] = torch.ones(512,768).double() #self.encoder.embeddings.position_embeddings.weight.clone()
+
+				# print(new_positional_embeddings.weight.size())
+				# replace paramters in model
+				# self.encoder.embeddings.position_embeddings.weight = nn.Parameter(new_positional_embeddings)
+
+
+				# replace the old positional embeddings of the model with the new ones
+				self.encoder.embeddings.position_embeddings = new_positional_embeddings
+
+				# print(self.encoder.embeddings.position_embeddings)
+				# exit()
+
+				# output = self.encoder.embeddings.position_embeddings(torch.tensor(np.full((2, 1000), fill_value=800, dtype=np.int64)))
+
+				# do necessary changes in the instantiated and pretrained bert model, in order to adjust to the new max input length
+				self.encoder.embeddings.register_buffer("position_ids", torch.arange(args.input_length_limit).expand((1, -1)))
+
+				# print(output.size())
+				# exit()
 				self.encoder.embeddings.position_embeddings.num_embeddings = args.input_length_limit
+
+				self.encoder.embeddings.max_position_embeddings = args.input_length_limit
 
 				# update parameter's value on BERT's config
 				self.encoder.config.max_position_embeddings = args.input_length_limit
+
+				# print(self)
+				# exit()
 
 			# extend vocab size of the model accordingly as well
 			self.encoder._resize_token_embeddings(new_num_tokens = vocab_size)
