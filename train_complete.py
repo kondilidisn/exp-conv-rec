@@ -64,9 +64,9 @@ def main():
 						help="Total number of training epochs to perform.")
 
 
-	parser.add_argument("--conversations_per_batch", default=5, type=int)
-	parser.add_argument("--base_conversations_per_batch", default=1, type=int)
-	parser.add_argument("--max_samples_per_gpu", default=-1, type=int,
+	parser.add_argument("--conversations_per_batch", default=1, type=int)
+	# parser.add_argument("--base_conversations_per_batch", default=1, type=int)
+	parser.add_argument("--max_samples_per_gpu", default=1, type=int,
 						help="If > 0: Splits a conversation into minibatches of size equal to this. Otherwise the batch is an integer of conversations as defined in --conversations_per_batch.")
 
 

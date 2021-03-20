@@ -111,6 +111,8 @@ class Complete_Model(nn.Module):
 
 			batch_size = batch["contexts"].size(0)
 
+			
+
 
 			minibatches = self.base_model.split_batch_to_minibatches(batch)
 
@@ -146,8 +148,8 @@ class Complete_Model(nn.Module):
 				torch.cuda.empty_cache()
 
 				# we preprocess the losses
-				if self.args.n_gpu > 1:
-					loss = loss.mean()
+				# if self.args.n_gpu > 1:
+				# 	loss = loss.mean()
 
 				# add the losses of the batch
 				# batch_loss += loss

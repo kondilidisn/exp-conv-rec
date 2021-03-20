@@ -282,6 +282,8 @@ class Cat_Pref_BERT(nn.Module):
 
 			# normalize Category loses so that the represent tha minibatch w.r.t. the complete batch
 			cat_loss *= minibatch_to_batch_ratio
+
+			batch_loss += cat_loss
 			# print(cat_loss)
 			# exit()
 
@@ -329,7 +331,7 @@ class Cat_Pref_BERT(nn.Module):
 		# 	# concatenate outputs of minibatches
 		batch_output = torch.cat(batch_output, dim = 0)
 
-		return batch_output, cat_loss
+		return batch_output, batch_loss
 
 
 
@@ -361,13 +363,12 @@ class Cat_Pref_BERT(nn.Module):
 				# we retrieve a batch
 				batch = batch_loader.load_batch(subset = subset)
 
+				if batch == None:
+					continue
+
 				batch_size = batch["contexts"].size(0)
 
 				num_of_samples += batch_size
-
-
-				if batch == None:
-					continue
 
 				_, cat_loss = self.forward_batch(batch)
 
@@ -451,7 +452,7 @@ class Cat_Pref_BERT(nn.Module):
 
 			# interpolated_losses.append(batch_loss.item())
 
-			# batch_loss.backward()
+			# cat_loss.backward()
 
 			# # perform update step
 			# torch.nn.utils.clip_grad_norm_(self.parameters(), self.args.max_grad_norm)
@@ -526,6 +527,11 @@ class Cat_Pref_BERT(nn.Module):
 		if next(self.parameters()).is_cuda:
 			contexts, token_types, attention_masks, category_targets = \
 			 contexts.cuda(), token_types.cuda(), attention_masks.cuda(), category_targets.cuda()
+
+		# print(contexts.size())
+		# print(token_types.size())
+		# print(attention_masks.size())
+		# print(category_targets.size())
 
 
 
@@ -632,6 +638,10 @@ class Cat_Pref_BERT(nn.Module):
 		else:
 			# cat_loss = self.mse_loss(cat_pred[cat_mask].view(-1), category_targets[cat_mask].view(-1))
 			cat_loss = self.mse_loss(cat_pred[cat_mask].view(-1), category_targets[cat_mask].view(-1))
+
+
+		# print(cat_loss)
+		# print()
 
 		# if category_targets is not None:
 		# if sentiment_analysis_targets is not None:
