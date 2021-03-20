@@ -16,7 +16,7 @@ i) preprocess data
     unzip Datasets/movielens/ml-latest.zip
     mv ml-latest Datasets/movielens 
 
-Match ReDial movies with Movielens movies
+Match ReDial movies with MovieLens movies
     
     python3 scripts/match_movies.py --redial_movies_path=Datasets/redial/movies_with_mentions.csv --ml_movies_path=Datasets/movielens/ml-latest/movies.csv --destination=Datasets/redial/movies_merged.csv
 
