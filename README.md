@@ -43,3 +43,14 @@ End-to-End:
 Ours-GT:
     
     python3 train_complete.py --reproduce ours_gt
+
+
+For reproducing the results of the baselines, please refer to their repositories:
+
+ReDial:
+    
+    https://github.com/RaymondLi0/conversational-recommendations
+    
+KBRD:
+
+    https://github.com/THUDM/KBRD
