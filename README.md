@@ -3,7 +3,7 @@ This repository was made to support the experimental findings of the paper:
 Accepted at the MICROS Workshop, ECIR 2021.
 (https://arxiv.org/abs/2103.08733)
 
-i) preprocess data
+i) Preprocess data
 
     git clone https://github.com/kondilidisn/exp-conv-rec.git
     cd exp-conv-rec
@@ -26,31 +26,31 @@ Create a file with all movies, their IDs, their categories etc.
 
 [In the following commands, you can define the "batch size" which actually defines the number of conversations to be included in the same batch, by defining the parameter (--conversations_per_batch X), and in case of insufficient (GPU) memory, you can set the parameter --max_samples_per_gpu Y, to something small.]
 
-ii) Train Category Preference Prediction module
+ii) **Train Category Preference Prediction module**
 
     python3 train_cat_pref_model.py
 
-iii) Train Item Recommender module
+iii) **Train Item Recommender module**
 
-Ours:
+**Ours**:
 
     python3 train_complete.py --reproduce ours
 
-End-to-End:
+**End-to-End**:
 
     python3 train_complete.py --reproduce e2e
 
-Ours-GT:
+**Ours-GT**:
     
     python3 train_complete.py --reproduce ours_gt
 
 
 For reproducing the results of the baselines, please refer to their repositories:
 
-ReDial:
+**ReDial**:
     
     https://github.com/RaymondLi0/conversational-recommendations
     
-KBRD:
+**KBRD**:
 
     https://github.com/THUDM/KBRD
