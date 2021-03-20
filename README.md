@@ -24,7 +24,7 @@ Create a file with all movies, their IDs, their categories etc.
 
     python3 scripts/create_movie_details_csv.py --movielens_path Datasets/movielens/ml-latest --redial_path Datasets/redial
 
-[In the following commands, you can define the "batch size" which actually defines the number of conversations to be included in the same batch, be defining the parameter (--conversations_per_batch X), and in case of insufficient (GPU) memory, you can set the parameter --max_samples_per_gpu Y, to something small.]
+[In the following commands, you can define the "batch size" which actually defines the number of conversations to be included in the same batch, by defining the parameter (--conversations_per_batch X), and in case of insufficient (GPU) memory, you can set the parameter --max_samples_per_gpu Y, to something small.]
 
 ii) Train Category_Preference_model
 
