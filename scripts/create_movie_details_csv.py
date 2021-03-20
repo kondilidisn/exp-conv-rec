@@ -13,12 +13,7 @@ args = parser.parse_args()
 
 dataset_path = args.movielens_path
 
-# ratings_filename = os.path.join(dataset_path, "ratings.csv")
 movies_filename = os.path.join(dataset_path, "movies.csv")
-# users_filename = os.path.join(dataset_path, "users.csv")
-
-# get a list of all ratings. Each entry is in the form of [user_id, movie_id, rating, timestamp]
-# ratings_data = [list(map(int, i.strip().split("::"))) for i in open(ratings_filename, encoding="ISO-8859-1").readlines()]
 
 # maintain a global set of all categories, we will need its length later on
 all_gernes = set()
@@ -62,21 +57,6 @@ for movie_id in movie_lens_ID_to_gerne_list:
 
 print('MovieLens : Total number of movies :', len(movie_lens_ID_to_gerne_list))
 print("MovieLens : Total movies with missing category information :", no_category_for_movie_counter)
-# print(len(movie_lens_movie_ids_missing_category_info))
-
-
-
-# we need a dictionary : database movie_id to MovieLens movie_id
-# database_id_to_movie_lens_id = {}
-# database_id_to_name = {}
-# redial_id_to_database_id = {}
-# database_id_to_redial_id = {}
-
-# redial_id_to_database_id = {}
-# redial_id_to_movie_lens_id = {}
-# movie_lens_id_to_redial_id = {}
-# movie_lens_id_to_name = {}
-# movie_lens_id_to_cateory_vector = {}
 
 index_to_redial_id = {}
 
@@ -102,10 +82,6 @@ with open(movies_merged_file, 'r') as f:
         if row[0] == "index":
             continue
 
-
-
-
-
         index = int(row[0])
         movie_name = row[1]
         database_id = int(row[2])
@@ -119,7 +95,6 @@ with open(movies_merged_file, 'r') as f:
 
         indexes.append(index)
 
-
         index_to_redial_id[index] = redial_id
 
         index_to_movie_lens_id[index] = movie_lens_id
@@ -131,16 +106,6 @@ with open(movies_merged_file, 'r') as f:
             database_id_to_index[database_id] = index
 
         index_to_name[index] = movie_name
-
-
-
-        # # if database id == -1 it means that the movie is not on ReDial
-        # redial_id_to_database_id[index] = database_id
-        # database_id_to_redial_id[database_id] = index
-        # database_id_to_name[database_id] = movie_name
-        # database_id_to_movie_lens_id[database_id] = movie_lens_id
-
-# database_id_to_gernes = {}
 
 index_to_gernes = {}
 
@@ -156,15 +121,6 @@ for index in indexes:
         redial_movies_without_category_infromation_counter += 1
     else:
         index_to_gernes[index] = movie_lens_ID_to_gerne_list[movie_lens_id]
-
-# for database_id in database_id_to_movie_lens_id:
-
-
-    # if database_id_to_movie_lens_id[database_id] == -1:
-    #     database_id_to_gernes[database_id] = standard_template
-    # else:
-    #     database_id_to_gernes[database_id] = movie_lens_ID_to_gerne_list[database_id_to_movie_lens_id[database_id]]
-
 
 # After we have retrieved the set of gernes for each movie (or have generated a set with all gernes)
 # we need to create a binary vector for each movie, of size equal to the number of gernes
@@ -218,75 +174,8 @@ with open( os.path.join(args.redial_path ,"movie_details.csv") , 'w') as writeFi
         if movie_lens_id != -1:
             movie_lens_movies_counter += 1
 
-
-        # index_to_redial_id = {}
-
-        # index_to_movie_lens_id = {}
-        # movie_lens_id_to_index = {}
-
-        # index_to_database_id = {}
-        # database_id_to_index = {}
-
-        # index_to_name = {}
-
-
-
-        # redial_id = index
-        # database_id = redial_id_to_database_id[index]
-        # movie_lens_id = database_id_to_movie_lens_id[database_id]
-        # movie_title = database_id_to_name[database_id]
-        # gerne_vector = database_id_to_category_vector[database_id]
-
-
-
         writer.writerow([str(database_id), str(redial_id), str(movie_lens_id), movie_title, str(gerne_vector) ])
-
-        # if  movie_lens_id in movie_lens_movie_ids_missing_category_info:
-        #     redial_movies_without_category_infromation_counter += 1
-
-
-
-
-
-    #     movie_lens_ID_to_gerne_list[movie_id] = standard_template
-    #     no_category_for_movie_counter += 1
-    #     movie_lens_movie_ids_missing_category_info.add(movie_id)
-
-
-    #     redial_id_to_database_id[index] = database_id
-    #     database_id_to_redial_id[database_id] = index
-    #     database_id_to_name[database_id] = movie_name
-    #     database_id_to_movie_lens_id[database_id] = movie_lens_id
-
-
-
-    # # we first wirte all redial movies
-    # for database_id in database_id_to_movie_lens_id:
-
-
-    #     movie_lens_id = database_id_to_movie_lens_id[database_id]
-    #     redial_id = database_id_to_redial_id[database_id]
-    #     movie_title = database_id_to_name[database_id]
-    #     gerne_vector = database_id_to_category_vector[database_id]
-    #     writer.writerow([str(database_id), str(redial_id), str(movie_lens_id), movie_title, str(gerne_vector) ])
-
-    #     if  movie_lens_id in movie_lens_movie_ids_missing_category_info:
-    #         redial_movies_without_category_infromation_counter += 1
-
-    # after we write all redial movies, we write the rest of the movies
-    # for database_id 
-
-
 
 print("Total ReDial movies:", redial_movie_counter)
 print("Total ReDial movies missing category info :",redial_movies_without_category_infromation_counter)
 
-
-# next step :
-# ? extract to csv ? 
-
-
-
-# for each user we need the movies that he mentioned and his sentiments for these movies
-# we add (movie_vector * sentiment) to the user vector, for each movie
-# then we apply softmax and we have a user category vector
