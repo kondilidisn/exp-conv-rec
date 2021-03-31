@@ -1,4 +1,0 @@
-experiments/*
-*.csv
-*.pyc
-slurm-*.out
