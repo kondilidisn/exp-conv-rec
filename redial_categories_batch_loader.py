@@ -157,7 +157,6 @@ class DialogueBatchLoader4Transformers(object):
 			dialogue
 			senders
 			movie_mentions
-			category_target
 			answers_dict
 		"""
 
@@ -223,53 +222,25 @@ class DialogueBatchLoader4Transformers(object):
 
 			dialogue += [encoded_text]
 
-		# initialize category vector with zeros
-		category_target = np.zeros(len(self.categories))
+		dialogue, senders, movie_mentions = self.truncate(dialogue, senders, movie_mentions)
 
-		for movies_of_message in movie_mentions:
-			for (token_index, redial_movie_id) in movies_of_message:
-				# retrieve movie category vector
-				movie_category_vector = self.redial_id_to_categories[redial_movie_id]
-				# retrieve sentiment if there is one
-				if redial_movie_id in answers_dict:
-					# liked the movie
-					if answers_dict[redial_movie_id]["liked"] == 1:
-						sentiment = 1
-					# didn't like
-					elif answers_dict[redial_movie_id]["liked"] == 0:
-						sentiment = -1
-					# didn't say (answers_dict[redial_movie_id]["liked"] == 2)
-					else:
-						sentiment = 0
-				else:
-					# if the answer forms of this conversation are missing, then we are simply taking the average category vector of the mentioned movies
-					sentiment = 1
-				# add movie category vector, multiplied by the sentiment (sentiment is in set {-1,1}), to the conversation category vector
-				category_target += movie_category_vector * sentiment
-
-		# apply softmax
-		category_target = np.exp(category_target)/sum(np.exp(category_target))
-
-		dialogue, senders, movie_mentions, category_target = self.truncate(dialogue, senders, movie_mentions, category_target)
-
-		return dialogue, senders, movie_mentions, category_target, answers_dict
+		return dialogue, senders, movie_mentions, answers_dict
 
 
-	def truncate(self, dialogue, senders, movie_mentions, category_target):
+	def truncate(self, dialogue, senders, movie_mentions):
 		#  dialogue, target, senders, movie_occurrences
 		# truncate conversations that have too many utterances
 		if len(dialogue) > self.conversation_length_limit:
 			dialogue = dialogue[:self.conversation_length_limit]
 			senders = senders[:self.conversation_length_limit]
 			movie_mentions = movie_mentions[:self.conversation_length_limit]
-			category_target = category_target[:self.conversation_length_limit]
 
 		# truncate utterances that are too long
 		for (i, utterance) in enumerate(dialogue):
 			if len(utterance) > self.utterance_length_limit:
 				# we make sure that the last token remains the EOS token
 				dialogue[i] = dialogue[i][:self.utterance_length_limit - 1] + [ dialogue[i][-1] ] 
-		return dialogue, senders, movie_mentions, category_target
+		return dialogue, senders, movie_mentions
 
 
 	def load_batch(self, subset="train"):
@@ -307,9 +278,9 @@ class DialogueBatchLoader4Transformers(object):
 		for conversation in batch_data:
 			# retrieve conversation data
 			if self.process_at_instanciation:
-				dialogue, senders, movie_mentions, category_target, answers_dict = conversation
+				dialogue, senders, movie_mentions, answers_dict = conversation
 			else:
-				dialogue, senders, movie_mentions, category_target, answers_dict = self.extract_dialogue4Bert(conversation)
+				dialogue, senders, movie_mentions, answers_dict = self.extract_dialogue4Bert(conversation)
 
 			# for each message
 			for i in range(len(senders)):
